@@ -58,6 +58,7 @@ export const saveAutores = (autores: Autor[]) => {
   localStorage.setItem(STORAGE_KEYS.AUTORES, JSON.stringify(autores));
 };
 
+// Migração de dados antigos para novo formato
 const migrateProdutosData = () => {
   const produtosData = localStorage.getItem(STORAGE_KEYS.PRODUTOS);
   if (produtosData) {
