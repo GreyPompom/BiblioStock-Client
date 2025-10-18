@@ -17,18 +17,6 @@ O projeto tem como objetivo gerenciar produtos, categorias e movimentações de 
 
 ---
 
-## 👩‍💻 Equipe do Projeto
-
-| Nome Completo |
-|-------------------------------|
-| Emely Santos da Silveira      |
-| Hellen Machado Borba           |
-| Letícia Beatriz Souza          |
-| Maria Luiza Garcia             |
-| Noah Freitas Rabelo            |
-
----
-
 ## ✨ Funcionalidades Principais
 
 ### 🏠 Dashboard
@@ -143,9 +131,17 @@ Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalh
 
 ---
 
-## 👨‍💻 Autor
+## 👩‍💻 Equipe do Projeto
 
 Desenvolvido como projeto de estudo de React + TypeScript + Tailwind CSS.
+
+| Nome Completo |
+|-------------------------------|
+| Emely Santos da Silveira      |
+| Hellen Machado Borba           |
+| Letícia Beatriz Souza          |
+| Maria Luiza Garcia             |
+| Noah Freitas Rabelo            |
 
 ---
 
