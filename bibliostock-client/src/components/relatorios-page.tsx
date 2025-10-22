@@ -7,6 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { FileText, Download, TrendingUp, TrendingDown, AlertTriangle, Package } from 'lucide-react';
 import { Badge } from './ui/badge';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export function RelatoriosPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -76,6 +78,89 @@ export function RelatoriosPage() {
       .join(', ');
   };
 
+  const exportarPDF = (relatorio: string) => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(`Relatório: ${relatorio}`, 10, 10);
+
+    switch (relatorio) {
+      case 'Lista de Preços':
+        autoTable(doc, {
+          startY: 20,
+          head: [['ID', 'Nome', 'Autor', 'Editora', 'Categoria', 'ISBN', 'Preço Unitário', 'Preço c/ Reajuste']],
+          body: listaPrecos.map(produto => [
+            produto.id,
+            produto.nome,
+            getAutoresNomes(produto.authorIds),
+            produto.editora,
+            getCategoriaNome(produto.categoriaId),
+            produto.isbn,
+            `R$ ${produto.precoUnitario.toFixed(2)}`,
+            `R$ ${calcularPrecoComReajuste(produto).toFixed(2)}`,
+          ]),
+        });
+        break;
+      case 'Balanço':
+        doc.setFontSize(14);
+        doc.text(`Valor Total do Estoque: R$ ${valorTotalEstoque.toFixed(2)}`, 10, 20);
+        autoTable(doc, {
+          startY: 30,
+          head: [['Nome', 'Categoria', 'Qtd. Estoque', 'Valor Unit.', 'Valor Total']],
+          body: balancoFisico.map(produto => [
+            produto.nome,
+            getCategoriaNome(produto.categoriaId),
+            produto.quantidadeEstoque,
+            `R$ ${produto.precoUnitario.toFixed(2)}`,
+            `R$ ${produto.valorTotal.toFixed(2)}`,
+          ]),
+        });
+        break;
+      case 'Estoque Baixo':
+        autoTable(doc, {
+          startY: 20,
+          head: [['ID', 'Nome', 'Qtd. Mínima', 'Qtd. Atual', 'Diferença', 'Status']],
+          body: produtosAbaixoMinimo.map(produto => [
+            produto.id,
+            produto.nome,
+            produto.quantidadeMinima,
+            produto.quantidadeEstoque,
+            produto.quantidadeMinima - produto.quantidadeEstoque,
+            'Crítico',
+          ]),
+        });
+        break;
+      case 'Por Categoria':
+        autoTable(doc, {
+          startY: 20,
+          head: [['Categoria', 'Quantidade de Produtos']],
+          body: produtosPorCategoria.map((item, index) => [
+            item.categoria,
+            item.quantidade,
+          ]),
+        });
+        break;
+      case 'Movimento':
+        doc.setFontSize(14);
+        doc.text(`Maior Número de Entradas: ${produtoMaisEntradas.produto} (${produtoMaisEntradas.entradas} unidades)`, 10, 20);
+        doc.text(`Maior Número de Saídas: ${produtoMaisSaidas.produto} (${produtoMaisSaidas.saidas} unidades)`, 10, 30);
+        autoTable(doc, {
+          startY: 40,
+          head: [['Produto', 'Total de Entradas', 'Total de Saídas', 'Saldo']],
+          body: movimentoPorProduto.map((item, index) => [
+            item.produto,
+            `+${item.entradas}`,
+            `-${item.saidas}`,
+            item.entradas - item.saidas,
+          ]),
+        });
+        break;
+      default:
+        break;
+    }
+
+    doc.save(`relatorio_${relatorio.replace(/\s+/g, '_').toLowerCase()}.pdf`);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -104,7 +189,7 @@ export function RelatoriosPage() {
                   </CardTitle>
                   <CardDescription>Todos os produtos em ordem alfabética com seus atributos</CardDescription>
                 </div>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => exportarPDF('Lista de Preços')}>
                   <Download className="size-4" />
                   Exportar PDF
                 </Button>
@@ -157,7 +242,7 @@ export function RelatoriosPage() {
                   </CardTitle>
                   <CardDescription>Relação de todos os produtos com valor total do estoque</CardDescription>
                 </div>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => exportarPDF('Balanço')}>
                   <Download className="size-4" />
                   Exportar PDF
                 </Button>
@@ -214,7 +299,7 @@ export function RelatoriosPage() {
                   </CardTitle>
                   <CardDescription>Produtos que precisam de reposição urgente</CardDescription>
                 </div>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => exportarPDF('Estoque Baixo')}>
                   <Download className="size-4" />
                   Exportar PDF
                 </Button>
@@ -268,7 +353,7 @@ export function RelatoriosPage() {
                   <CardTitle>Quantidade de Produtos por Categoria</CardTitle>
                   <CardDescription>Distribuição dos produtos por categoria</CardDescription>
                 </div>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => exportarPDF('Por Categoria')}>
                   <Download className="size-4" />
                   Exportar PDF
                 </Button>
@@ -306,7 +391,7 @@ export function RelatoriosPage() {
                   <CardTitle>Produtos com Maior Movimento</CardTitle>
                   <CardDescription>Análise de entradas e saídas de produtos</CardDescription>
                 </div>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => exportarPDF('Movimento')}>
                   <Download className="size-4" />
                   Exportar PDF
                 </Button>
