@@ -28,6 +28,13 @@ export function RelatoriosPage() {
   // Relatório: Lista de Preços
   const listaPrecos = [...produtos].sort((a, b) => a.nome.localeCompare(b.nome));
 
+  // Calcular preço com reajuste da categoria
+  const calcularPrecoComReajuste = (produto: Produto) => {
+    const categoria = categorias.find(c => c.id === produto.categoriaId);
+    const percentual = categoria?.percentualReajustePadrao || 0;
+    return produto.precoUnitario * (1 + percentual / 100);
+  };
+
   // Relatório: Balanço Físico/Financeiro
   const balancoFisico = [...produtos]
     .sort((a, b) => a.nome.localeCompare(b.nome))
@@ -114,7 +121,8 @@ export function RelatoriosPage() {
                       <TableHead>Editora</TableHead>
                       <TableHead>Categoria</TableHead>
                       <TableHead>ISBN</TableHead>
-                      <TableHead>Preço</TableHead>
+                      <TableHead>Preço Unitário</TableHead>
+                      <TableHead>Preço c/ Reajuste</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -127,6 +135,7 @@ export function RelatoriosPage() {
                         <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
                         <TableCell>{produto.isbn}</TableCell>
                         <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
+                        <TableCell>R$ {calcularPrecoComReajuste(produto).toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
