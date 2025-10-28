@@ -8,20 +8,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
-import { Plus, ArrowUpCircle, ArrowDownCircle, Pencil, Trash2 } from 'lucide-react';
+import { Plus, ArrowUpCircle, ArrowDownCircle, AlertTriangle } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Alert, AlertDescription } from './ui/alert';
-import { AlertTriangle } from 'lucide-react';
 
 export function MovimentacoesPage() {
   const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [movimentacaoToDelete, setMovimentacaoToDelete] = useState<string | null>(null);
-  const [editingMovimentacao, setEditingMovimentacao] = useState<Movimentacao | null>(null);
   const [filterTipo, setFilterTipo] = useState('all');
   
   const [formData, setFormData] = useState({
@@ -47,21 +42,10 @@ export function MovimentacoesPage() {
       tipo: 'Entrada',
       observacao: '',
     });
-    setEditingMovimentacao(null);
   };
 
-  const handleOpenDialog = (movimentacao?: Movimentacao) => {
-    if (movimentacao) {
-      setEditingMovimentacao(movimentacao);
-      setFormData({
-        produtoId: movimentacao.produtoId,
-        quantidade: movimentacao.quantidade.toString(),
-        tipo: movimentacao.tipo,
-        observacao: movimentacao.observacao,
-      });
-    } else {
-      resetForm();
-    }
+  const handleOpenDialog = () => {
+    resetForm();
     setIsDialogOpen(true);
   };
 
@@ -96,148 +80,54 @@ export function MovimentacoesPage() {
       return;
     }
 
-    if (editingMovimentacao) {
-      // Edição: reverter movimentação anterior e aplicar nova
-      const movAnterior = editingMovimentacao;
-      
-      // Reverter a movimentação anterior
-      let estoqueAtual = produto.quantidadeEstoque;
-      if (movAnterior.tipo === 'Entrada') {
-        estoqueAtual -= movAnterior.quantidade;
-      } else {
-        estoqueAtual += movAnterior.quantidade;
-      }
-
-      // Aplicar nova movimentação
-      if (formData.tipo === 'Entrada') {
-        estoqueAtual += quantidade;
-      } else {
-        if (estoqueAtual < quantidade) {
-          toast.error('Quantidade insuficiente em estoque para esta operação');
-          return;
-        }
-        estoqueAtual -= quantidade;
-      }
-
-      const movimentacaoAtualizada: Movimentacao = {
-        ...editingMovimentacao,
-        produtoId: formData.produtoId,
-        produtoNome: produto.nome,
-        quantidade,
-        tipo: formData.tipo,
-        observacao: formData.observacao,
-      };
-
-      const produtosAtualizados = produtos.map(p => 
-        p.id === formData.produtoId 
-          ? { ...p, quantidadeEstoque: estoqueAtual }
-          : p
-      );
-
-      const movimentacoesAtualizadas = movimentacoes.map(m =>
-        m.id === editingMovimentacao.id ? movimentacaoAtualizada : m
-      );
-
-      // Verificar alertas de estoque
-      if (estoqueAtual < produto.quantidadeMinima) {
-        toast.warning(`Atenção: Estoque de "${produto.nome}" abaixo do mínimo!`, {
-          duration: 5000,
-        });
-      } else if (estoqueAtual > produto.quantidadeMaxima) {
-        toast.warning(`Atenção: Estoque de "${produto.nome}" acima do máximo!`, {
-          duration: 5000,
-        });
-      }
-
-      saveMovimentacoes(movimentacoesAtualizadas);
-      saveProdutos(produtosAtualizados);
-      setMovimentacoes(movimentacoesAtualizadas);
-      setProdutos(produtosAtualizados);
-      toast.success('Movimentação atualizada com sucesso!');
-    } else {
-      // Nova movimentação
-      // Validar estoque para saída
-      if (formData.tipo === 'Saída' && produto.quantidadeEstoque < quantidade) {
-        toast.error('Quantidade insuficiente em estoque');
-        return;
-      }
-
-      const novaMovimentacao: Movimentacao = {
-        id: Date.now().toString(),
-        produtoId: formData.produtoId,
-        produtoNome: produto.nome,
-        data: new Date().toISOString(),
-        quantidade,
-        tipo: formData.tipo,
-        observacao: formData.observacao,
-      };
-
-      // Atualizar estoque do produto
-      const novoEstoque = formData.tipo === 'Entrada' 
-        ? produto.quantidadeEstoque + quantidade 
-        : produto.quantidadeEstoque - quantidade;
-
-      const produtosAtualizados = produtos.map(p => 
-        p.id === formData.produtoId 
-          ? { ...p, quantidadeEstoque: novoEstoque }
-          : p
-      );
-
-      // Verificar alertas de estoque
-      if (novoEstoque < produto.quantidadeMinima) {
-        toast.warning(`Atenção: Estoque de "${produto.nome}" abaixo do mínimo!`, {
-          duration: 5000,
-        });
-      } else if (novoEstoque > produto.quantidadeMaxima) {
-        toast.warning(`Atenção: Estoque de "${produto.nome}" acima do máximo!`, {
-          duration: 5000,
-        });
-      }
-
-      const movimentacoesAtualizadas = [novaMovimentacao, ...movimentacoes];
-      
-      saveMovimentacoes(movimentacoesAtualizadas);
-      saveProdutos(produtosAtualizados);
-      setMovimentacoes(movimentacoesAtualizadas);
-      setProdutos(produtosAtualizados);
-      toast.success('Movimentação registrada com sucesso!');
+    // Validar estoque para saída
+    if (formData.tipo === 'Saída' && produto.quantidadeEstoque < quantidade) {
+      toast.error('Quantidade insuficiente em estoque');
+      return;
     }
+
+    const novaMovimentacao: Movimentacao = {
+      id: Date.now().toString(),
+      produtoId: formData.produtoId,
+      produtoNome: produto.nome,
+      data: new Date().toISOString(),
+      quantidade,
+      tipo: formData.tipo,
+      observacao: formData.observacao,
+    };
+
+    // Atualizar estoque do produto
+    const novoEstoque = formData.tipo === 'Entrada' 
+      ? produto.quantidadeEstoque + quantidade 
+      : produto.quantidadeEstoque - quantidade;
+
+    const produtosAtualizados = produtos.map(p => 
+      p.id === formData.produtoId 
+        ? { ...p, quantidadeEstoque: novoEstoque }
+        : p
+    );
+
+    // Verificar alertas de estoque
+    if (novoEstoque < produto.quantidadeMinima) {
+      toast.warning(`Atenção: Estoque de "${produto.nome}" abaixo do mínimo!`, {
+        duration: 5000,
+      });
+    } else if (novoEstoque > produto.quantidadeMaxima) {
+      toast.warning(`Atenção: Estoque de "${produto.nome}" acima do máximo!`, {
+        duration: 5000,
+      });
+    }
+
+    const movimentacoesAtualizadas = [novaMovimentacao, ...movimentacoes];
+    
+    saveMovimentacoes(movimentacoesAtualizadas);
+    saveProdutos(produtosAtualizados);
+    setMovimentacoes(movimentacoesAtualizadas);
+    setProdutos(produtosAtualizados);
+    toast.success('Movimentação registrada com sucesso!');
 
     setIsDialogOpen(false);
     resetForm();
-  };
-
-  const handleDelete = (id: string) => {
-    setMovimentacaoToDelete(id);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (movimentacaoToDelete) {
-      const movimentacao = movimentacoes.find(m => m.id === movimentacaoToDelete);
-      if (movimentacao) {
-        // Reverter o estoque
-        const produto = produtos.find(p => p.id === movimentacao.produtoId);
-        if (produto) {
-          const estoqueRevertido = movimentacao.tipo === 'Entrada'
-            ? produto.quantidadeEstoque - movimentacao.quantidade
-            : produto.quantidadeEstoque + movimentacao.quantidade;
-
-          const produtosAtualizados = produtos.map(p =>
-            p.id === produto.id ? { ...p, quantidadeEstoque: estoqueRevertido } : p
-          );
-          saveProdutos(produtosAtualizados);
-          setProdutos(produtosAtualizados);
-        }
-
-        const movimentacoesAtualizadas = movimentacoes.filter(m => m.id !== movimentacaoToDelete);
-        saveMovimentacoes(movimentacoesAtualizadas);
-        setMovimentacoes(movimentacoesAtualizadas);
-        toast.success('Movimentação excluída com sucesso!');
-      }
-    }
-    setIsDeleteDialogOpen(false);
-    setMovimentacaoToDelete(null);
   };
 
   const filteredMovimentacoes = filterTipo === 'all' 
@@ -279,13 +169,12 @@ export function MovimentacoesPage() {
               <TableHead>Tipo</TableHead>
               <TableHead>Quantidade</TableHead>
               <TableHead>Observação</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredMovimentacoes.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                   Nenhuma movimentação registrada
                 </TableCell>
               </TableRow>
@@ -317,16 +206,6 @@ export function MovimentacoesPage() {
                   </TableCell>
                   <TableCell>{mov.quantidade}</TableCell>
                   <TableCell className="max-w-[300px] truncate">{mov.observacao || '-'}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(mov)}>
-                        <Pencil className="size-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(mov.id)}>
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -337,9 +216,9 @@ export function MovimentacoesPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{editingMovimentacao ? 'Editar Movimentação' : 'Nova Movimentação'}</DialogTitle>
+            <DialogTitle>Nova Movimentação</DialogTitle>
             <DialogDescription>
-              {editingMovimentacao ? 'Edite os dados da movimentação' : 'Registre uma entrada ou saída de estoque'}
+              Registre uma entrada ou saída de estoque
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -360,7 +239,6 @@ export function MovimentacoesPage() {
               <Select 
                 value={formData.produtoId} 
                 onValueChange={(value) => setFormData({ ...formData, produtoId: value })}
-                disabled={!!editingMovimentacao}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o produto" />
@@ -373,11 +251,6 @@ export function MovimentacoesPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {editingMovimentacao && (
-                <p className="text-xs text-muted-foreground">
-                  O produto não pode ser alterado ao editar uma movimentação
-                </p>
-              )}
             </div>
             {formData.produtoId && (
               <Alert>
@@ -430,26 +303,11 @@ export function MovimentacoesPage() {
               Cancelar
             </Button>
             <Button onClick={handleSave}>
-              {editingMovimentacao ? 'Atualizar' : 'Registrar'}
+              Registrar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir esta movimentação? O estoque será revertido automaticamente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Excluir</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
