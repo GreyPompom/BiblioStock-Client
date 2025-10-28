@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Produto, Categoria, HistoricoReajuste } from '../types';
-import { getProdutos, saveProdutos, getCategorias, getHistoricoReajustes, saveHistoricoReajustes } from '../lib/storage';
+import { getProdutos, saveProdutos, getCategorias, saveCategorias, getHistoricoReajustes, saveHistoricoReajustes } from '../lib/storage';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -56,10 +56,11 @@ export function ReajustesPage() {
   const confirmarReajuste = () => {
     const perc = parseFloat(percentual) || 0;
     let produtosAtualizados = [...produtos];
+    let categoriasAtualizadas = [...categorias];
     let novoHistorico: HistoricoReajuste;
 
     if (tipoReajuste === 'global') {
-      // Reajuste global
+      // Reajuste global - ALTERA OS PREÇOS de todos os produtos
       produtosAtualizados = produtos.map(p => ({
         ...p,
         precoUnitario: p.precoUnitario * (1 + perc / 100),
@@ -71,13 +72,15 @@ export function ReajustesPage() {
         percentual: perc,
       };
 
+      saveProdutos(produtosAtualizados);
+      setProdutos(produtosAtualizados);
       toast.success(`Reajuste global de ${perc}% aplicado a todos os produtos!`);
     } else if (tipoReajuste === 'categoria') {
-      // Reajuste por categoria
-      produtosAtualizados = produtos.map(p => 
-        p.categoriaId === categoriaSelecionada
-          ? { ...p, precoUnitario: p.precoUnitario * (1 + perc / 100) }
-          : p
+      // Reajuste por categoria - ALTERA O PERCENTUAL PADRÃO da categoria
+      categoriasAtualizadas = categorias.map(c => 
+        c.id === categoriaSelecionada
+          ? { ...c, percentualReajustePadrao: perc }
+          : c
       );
 
       const categoria = categorias.find(c => c.id === categoriaSelecionada);
@@ -89,9 +92,11 @@ export function ReajustesPage() {
         categoriaNome: categoria?.nome,
       };
 
-      toast.success(`Reajuste de ${perc}% aplicado à categoria "${categoria?.nome}"!`);
+      saveCategorias(categoriasAtualizadas);
+      setCategorias(categoriasAtualizadas);
+      toast.success(`Percentual de reajuste da categoria "${categoria?.nome}" atualizado para ${perc}%!`);
     } else {
-      // Reajuste por percentual padrão de cada categoria
+      // Reajuste padrão - ALTERA OS PREÇOS aplicando o percentual de cada categoria
       produtosAtualizados = produtos.map(p => {
         const categoria = categorias.find(c => c.id === p.categoriaId);
         const percCategoria = categoria?.percentualReajustePadrao || 0;
@@ -107,11 +112,10 @@ export function ReajustesPage() {
         percentual: 0, // Múltiplos percentuais
       };
 
+      saveProdutos(produtosAtualizados);
+      setProdutos(produtosAtualizados);
       toast.success('Reajuste padrão aplicado conforme percentual de cada categoria!');
     }
-
-    saveProdutos(produtosAtualizados);
-    setProdutos(produtosAtualizados);
 
     const novoHist = [novoHistorico, ...historico];
     saveHistoricoReajustes(novoHist);
@@ -165,9 +169,9 @@ export function ReajustesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="size-5" />
-              Reajuste por Categoria
+              Configurar Percentual
             </CardTitle>
-            <CardDescription>Aplicar percentual a uma categoria específica</CardDescription>
+            <CardDescription>Definir o percentual padrão de uma categoria</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -185,14 +189,14 @@ export function ReajustesPage() {
                 <SelectContent>
                   {categorias.map(cat => (
                     <SelectItem key={cat.id} value={cat.id}>
-                      {cat.nome} ({cat.percentualReajustePadrao}%)
+                      {cat.nome} (atual: {cat.percentualReajustePadrao}%)
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="percentual-categoria">Percentual (%)</Label>
+              <Label htmlFor="percentual-categoria">Novo Percentual (%)</Label>
               <Input
                 id="percentual-categoria"
                 type="number"
@@ -206,7 +210,7 @@ export function ReajustesPage() {
               />
             </div>
             <Button className="w-full" onClick={handleReajusteCategoria}>
-              Aplicar Reajuste
+              Atualizar Percentual
             </Button>
           </CardContent>
         </Card>
@@ -306,22 +310,26 @@ export function ReajustesPage() {
       <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Reajuste de Preços</AlertDialogTitle>
+            <AlertDialogTitle>
+              {tipoReajuste === 'categoria' ? 'Confirmar Atualização de Percentual' : 'Confirmar Reajuste de Preços'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {tipoReajuste === 'global' && (
-                <>Você está prestes a aplicar um reajuste de <strong>{percentual}%</strong> a todos os produtos. Esta ação não pode ser desfeita.</>
+                <>Você está prestes a aplicar um reajuste de <strong>{percentual}%</strong> aos preços de todos os produtos. Esta ação não pode ser desfeita.</>
               )}
               {tipoReajuste === 'categoria' && (
-                <>Você está prestes a aplicar um reajuste de <strong>{percentual}%</strong> aos produtos da categoria <strong>{categorias.find(c => c.id === categoriaSelecionada)?.nome}</strong>. Esta ação não pode ser desfeita.</>
+                <>Você está prestes a atualizar o percentual padrão da categoria <strong>{categorias.find(c => c.id === categoriaSelecionada)?.nome}</strong> para <strong>{percentual}%</strong>. Isso não altera os preços atuais dos produtos, apenas define o percentual que será usado em reajustes futuros.</>
               )}
               {tipoReajuste === 'padrao' && (
-                <>Você está prestes a aplicar o reajuste padrão configurado para cada categoria. Esta ação não pode ser desfeita.</>
+                <>Você está prestes a aplicar o reajuste padrão aos preços dos produtos conforme o percentual configurado para cada categoria. Esta ação não pode ser desfeita.</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmarReajuste}>Confirmar Reajuste</AlertDialogAction>
+            <AlertDialogAction onClick={confirmarReajuste}>
+              {tipoReajuste === 'categoria' ? 'Confirmar Atualização' : 'Confirmar Reajuste'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
