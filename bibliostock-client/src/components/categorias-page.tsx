@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Categoria } from '../types';
-import { getCategorias, saveCategorias, getProdutos } from '../lib/storage';
+import { Categoria, HistoricoReajuste } from '../types';
+import { getCategorias, saveCategorias, getProdutos, getHistoricoReajustes, saveHistoricoReajustes } from '../lib/storage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -22,7 +22,7 @@ export function CategoriasPage() {
     nome: '',
     tamanho: 'Médio' as const,
     tipoEmbalagem: 'Papelão' as const,
-    percentualReajustePadrao: '',
+    percentualReajustePadrao: 0,
   });
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function CategoriasPage() {
       nome: '',
       tamanho: 'Médio',
       tipoEmbalagem: 'Papelão',
-      percentualReajustePadrao: '',
+      percentualReajustePadrao: 0,
     });
     setEditingCategoria(null);
   };
@@ -50,7 +50,7 @@ export function CategoriasPage() {
         nome: categoria.nome,
         tamanho: categoria.tamanho,
         tipoEmbalagem: categoria.tipoEmbalagem,
-        percentualReajustePadrao: categoria.percentualReajustePadrao.toString(),
+        percentualReajustePadrao: categoria.percentualReajustePadrao,
       });
     } else {
       resetForm();
@@ -69,8 +69,13 @@ export function CategoriasPage() {
       nome: formData.nome,
       tamanho: formData.tamanho,
       tipoEmbalagem: formData.tipoEmbalagem,
-      percentualReajustePadrao: parseFloat(formData.percentualReajustePadrao) || 0,
+      percentualReajustePadrao: formData.percentualReajustePadrao,
     };
+
+    // Verificar se o percentual foi alterado (ao editar) ou se é uma nova categoria com percentual diferente de 0
+    const percentualAlterado = editingCategoria 
+      ? editingCategoria.percentualReajustePadrao !== formData.percentualReajustePadrao
+      : formData.percentualReajustePadrao !== 0;
 
     const updatedCategorias = editingCategoria
       ? categorias.map(c => c.id === editingCategoria.id ? novaCategoria : c)
@@ -78,6 +83,21 @@ export function CategoriasPage() {
 
     saveCategorias(updatedCategorias);
     setCategorias(updatedCategorias);
+
+    // Registrar no histórico se o percentual foi alterado
+    if (percentualAlterado) {
+      const historico = getHistoricoReajustes();
+      const novoHistorico: HistoricoReajuste = {
+        id: Date.now().toString(),
+        data: new Date().toISOString(),
+        percentual: formData.percentualReajustePadrao,
+        categoriaId: novaCategoria.id,
+        categoriaNome: novaCategoria.nome,
+      };
+      const updatedHistorico = [novoHistorico, ...historico];
+      saveHistoricoReajustes(updatedHistorico);
+    }
+
     setIsDialogOpen(false);
     resetForm();
     toast.success(editingCategoria ? 'Categoria atualizada com sucesso!' : 'Categoria cadastrada com sucesso!');
@@ -210,13 +230,13 @@ export function CategoriasPage() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="reajuste">Percentual de Reajuste Padrão (%)</Label>
+              <Label htmlFor="reajuste">Reajuste Padrão (%)</Label>
               <Input
                 id="reajuste"
                 type="number"
                 step="0.01"
                 value={formData.percentualReajustePadrao}
-                onChange={(e) => setFormData({ ...formData, percentualReajustePadrao: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, percentualReajustePadrao: parseFloat(e.target.value) || 0 })}
               />
             </div>
           </div>
