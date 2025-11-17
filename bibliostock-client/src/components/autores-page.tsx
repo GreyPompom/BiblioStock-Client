@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from './ui/textarea';
 import { Plus, Pencil, Trash2, Search, BookOpen } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export function AutoresPage() {
   const [autores, setAutores] = useState<Autor[]>([]);
@@ -27,6 +27,7 @@ export function AutoresPage() {
     nomeCompleto: '',
     nacionalidade: '',
     biografia: '',
+    dataNascimento: '',
   });
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export function AutoresPage() {
       nomeCompleto: '',
       nacionalidade: '',
       biografia: '',
+      dataNascimento: '',
     });
     setEditingAutor(null);
   };
@@ -71,6 +73,7 @@ export function AutoresPage() {
         nomeCompleto: autor.nomeCompleto,
         nacionalidade: autor.nacionalidade,
         biografia: autor.biografia,
+        dataNascimento: autor.dataNascimento || '',
       });
     } else {
       resetForm();
@@ -89,7 +92,7 @@ export function AutoresPage() {
       nomeCompleto: formData.nomeCompleto,
       nacionalidade: formData.nacionalidade,
       biografia: formData.biografia,
-      dataCadastro: editingAutor?.dataCadastro || new Date().toISOString(),
+      dataNascimento: formData.dataNascimento,
     };
 
     const updatedAutores = editingAutor
@@ -104,7 +107,7 @@ export function AutoresPage() {
   };
 
   const handleDelete = (id: string) => {
-    // RN008 e RF016: Verificar se o autor está vinculado a algum livro
+    // Verificar se o autor está vinculado a algum livro (RN008 e RF016)
     const produtos = getProdutos();
     const livrosVinculados = produtos.filter(p => p.authorIds.includes(id));
     
@@ -174,7 +177,7 @@ export function AutoresPage() {
               <TableHead>Nome Completo</TableHead>
               <TableHead>Nacionalidade</TableHead>
               <TableHead>Livros Vinculados</TableHead>
-              <TableHead>Data de Cadastro</TableHead>
+              <TableHead>Data de Nascimento</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -211,7 +214,10 @@ export function AutoresPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {new Date(autor.dataCadastro).toLocaleDateString('pt-BR')}
+                      {autor.dataNascimento 
+                        ? new Date(autor.dataNascimento).toLocaleDateString('pt-BR')
+                        : <span className="text-muted-foreground">Não informada</span>
+                      }
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -269,6 +275,15 @@ export function AutoresPage() {
                 rows={4}
               />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="dataNascimento">Data de Nascimento</Label>
+              <Input
+                id="dataNascimento"
+                type="date"
+                value={formData.dataNascimento}
+                onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -303,10 +318,12 @@ export function AutoresPage() {
                   <p className="whitespace-pre-wrap">{detailsAutor.biografia}</p>
                 </div>
               )}
-              <div>
-                <Label className="text-muted-foreground">Data de Cadastro</Label>
-                <p>{new Date(detailsAutor.dataCadastro).toLocaleDateString('pt-BR')}</p>
-              </div>
+              {detailsAutor.dataNascimento && (
+                <div>
+                  <Label className="text-muted-foreground">Data de Nascimento</Label>
+                  <p>{new Date(detailsAutor.dataNascimento).toLocaleDateString('pt-BR')}</p>
+                </div>
+              )}
               <div>
                 <Label className="text-muted-foreground">Livros Publicados</Label>
                 {getLivrosDoAutor(detailsAutor.id).length > 0 ? (
