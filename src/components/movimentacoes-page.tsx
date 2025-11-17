@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Movimentacao, Produto, TipoMovimentacao } from '../types';
-import { getMovimentacoes, saveMovimentacoes, getProdutos, saveProdutos } from '../lib/storage';
+//import type { Movimentacao, Produto, TipoMovimentacao } from '../types';
+//import { getMovimentacoes, saveMovimentacoes, getProdutos, saveProdutos } from '../lib/storage';
+
+import type { MovimentacaoUI, MovementFormData  } from '../types/movements.dto';
+import type { Produto, TipoMovimentacao } from '../types';
+import { getProdutos, saveProdutos } from '../lib/storage';
+import { fetchAllMovements, createMovement  } from '../lib/api/movementsApi';
+import { mapMovementApiToUi } from '../lib/mappers/movementMapper';
+
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -14,25 +21,55 @@ import { toast } from 'sonner';
 import { Alert, AlertDescription } from './ui/alert';
 
 export function MovimentacoesPage() {
-  const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>([]);
+  const [movimentacoes, setMovimentacoes] = useState<MovimentacaoUI[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterTipo, setFilterTipo] = useState('all');
-  
-  const [formData, setFormData] = useState({
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+
+  const [formData, setFormData] = useState<MovementFormData>({
     produtoId: '',
     quantidade: '',
-    tipo: 'Entrada' as TipoMovimentacao,
+    tipo: 'Entrada',
     observacao: '',
   });
 
   useEffect(() => {
-    loadData();
+    void loadInitialData();
   }, []);
 
-  const loadData = () => {
-    setMovimentacoes(getMovimentacoes().sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()));
-    setProdutos(getProdutos());
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+      setLoadError(null);
+      
+    const apiMovements = await fetchAllMovements();
+    console.log('apiMovements:', apiMovements); // ajuda a debugar formato
+
+    if (!Array.isArray(apiMovements)) {
+      console.error('Movimentações não vieram como array:', apiMovements);
+      setLoadError('Formato de dados de movimentações inválido.');
+      return;
+    }
+
+      const uiMovements = apiMovements
+        .map(mapMovementApiToUi)
+        .sort(
+          (a, b) =>
+            new Date(b.data).getTime() - new Date(a.data).getTime(),
+        );
+
+      setMovimentacoes(uiMovements);
+    } catch (error) {
+      console.error('Erro ao carregar movimentações:', error);
+      setLoadError('Não foi possível carregar as movimentações. Tente novamente mais tarde.');
+      toast.error('Erro ao carregar movimentações de estoque.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const resetForm = () => {
@@ -49,13 +86,13 @@ export function MovimentacoesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.produtoId || !formData.quantidade) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
     }
 
-    const quantidade = parseInt(formData.quantidade);
+    const quantidade = parseInt(formData.quantidade, 10);
 
     // Validações de quantidade
     if (quantidade < 0) {
@@ -68,71 +105,79 @@ export function MovimentacoesPage() {
       return;
     }
 
-    if (isNaN(quantidade) || quantidade === 0) {
+    if (Number.isNaN(quantidade) || quantidade === 0) {
       toast.error('Digite uma quantidade válida maior que zero');
       return;
     }
 
     const produto = produtos.find(p => p.id === formData.produtoId);
-    
+
     if (!produto) {
       toast.error('Produto não encontrado');
       return;
     }
 
-    // Validar estoque para saída
+    // Validar estoque para saída (ainda usando estoque local enquanto produto não vem da API)
     if (formData.tipo === 'Saída' && produto.quantidadeEstoque < quantidade) {
       toast.error('Quantidade insuficiente em estoque');
       return;
     }
 
-    const novaMovimentacao: Movimentacao = {
-      id: Date.now().toString(),
-      produtoId: formData.produtoId,
-      produtoNome: produto.nome,
-      data: new Date().toISOString(),
-      quantidade,
-      tipo: formData.tipo,
-      observacao: formData.observacao,
-    };
+    try {
+      setIsSaving(true);
 
-    // Atualizar estoque do produto
-    const novoEstoque = formData.tipo === 'Entrada' 
-      ? produto.quantidadeEstoque + quantidade 
-      : produto.quantidadeEstoque - quantidade;
-
-    const produtosAtualizados = produtos.map(p => 
-      p.id === formData.produtoId 
-        ? { ...p, quantidadeEstoque: novoEstoque }
-        : p
-    );
-
-    // Verificar alertas de estoque
-    if (novoEstoque < produto.quantidadeMinima) {
-      toast.warning(`Atenção: Estoque de "${produto.nome}" abaixo do mínimo!`, {
-        duration: 5000,
+      // Chama a API para registrar a movimentação
+      const movementCreatedApi = await createMovement({
+        productId: formData.produtoId,
+        quantity: quantidade,
+        type: formData.tipo === 'Entrada' ? 'ENTRADA' : 'SAIDA',
+        observation: formData.observacao || undefined,
       });
-    } else if (novoEstoque > produto.quantidadeMaxima) {
-      toast.warning(`Atenção: Estoque de "${produto.nome}" acima do máximo!`, {
-        duration: 5000,
-      });
+
+      const movementCreatedUi = mapMovementApiToUi(movementCreatedApi);
+
+      // Atualizar estoque do produto LOCALMENTE (até migrar produtos para API)
+      const novoEstoque =
+        formData.tipo === 'Entrada'
+          ? produto.quantidadeEstoque + quantidade
+          : produto.quantidadeEstoque - quantidade;
+
+      const produtosAtualizados = produtos.map(p =>
+        p.id === formData.produtoId
+          ? { ...p, quantidadeEstoque: novoEstoque }
+          : p,
+      );
+
+      // Verificar alertas de estoque
+      if (novoEstoque < produto.quantidadeMinima) {
+        toast.warning(`Atenção: Estoque de "${produto.nome}" abaixo do mínimo!`, {
+          duration: 5000,
+        });
+      } else if (novoEstoque > produto.quantidadeMaxima) {
+        toast.warning(`Atenção: Estoque de "${produto.nome}" acima do máximo!`, {
+          duration: 5000,
+        });
+      }
+
+      // Atualizar estado local com a nova movimentação (já vinda da API)
+      setMovimentacoes(prev => [movementCreatedUi, ...prev]);
+      setProdutos(produtosAtualizados);
+      saveProdutos(produtosAtualizados);
+
+      toast.success('Movimentação registrada com sucesso!');
+      setIsDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error('Erro ao registrar movimentação:', error);
+      toast.error('Não foi possível registrar a movimentação. Tente novamente.');
+    } finally {
+      setIsSaving(false);
     }
-
-    const movimentacoesAtualizadas = [novaMovimentacao, ...movimentacoes];
-    
-    saveMovimentacoes(movimentacoesAtualizadas);
-    saveProdutos(produtosAtualizados);
-    setMovimentacoes(movimentacoesAtualizadas);
-    setProdutos(produtosAtualizados);
-    toast.success('Movimentação registrada com sucesso!');
-
-    setIsDialogOpen(false);
-    resetForm();
   };
-
-  const filteredMovimentacoes = filterTipo === 'all' 
-    ? movimentacoes 
-    : movimentacoes.filter(m => m.tipo === filterTipo);
+  const filteredMovimentacoes =
+    filterTipo === 'all'
+      ? movimentacoes
+      : movimentacoes.filter((m) => m.tipo === filterTipo);
 
   return (
     <div className="space-y-6">
@@ -148,7 +193,10 @@ export function MovimentacoesPage() {
       </div>
 
       <div className="flex gap-4">
-        <Select value={filterTipo} onValueChange={setFilterTipo}>
+        <Select
+          value={filterTipo}
+          onValueChange={(value: string) => setFilterTipo(value as 'all' | TipoMovimentacao)}
+        >
           <SelectTrigger className="w-full md:w-[200px]">
             <SelectValue placeholder="Filtrar por tipo" />
           </SelectTrigger>
@@ -159,7 +207,20 @@ export function MovimentacoesPage() {
           </SelectContent>
         </Select>
       </div>
+      <div>
+        {isLoading && (
+          <p className="text-sm text-muted-foreground">
+            Carregando movimentações...
+          </p>
+        )}
 
+        {loadError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        )}
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -213,7 +274,7 @@ export function MovimentacoesPage() {
         </Table>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Nova Movimentação</DialogTitle>
@@ -224,7 +285,12 @@ export function MovimentacoesPage() {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="tipo">Tipo de Movimentação *</Label>
-              <Select value={formData.tipo} onValueChange={(value: TipoMovimentacao) => setFormData({ ...formData, tipo: value })}>
+              <Select
+                value={formData.tipo}
+                onValueChange={(value: TipoMovimentacao) =>
+                  setFormData(prev => ({ ...prev, tipo: value }))
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -236,9 +302,11 @@ export function MovimentacoesPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="produto">Produto *</Label>
-              <Select 
-                value={formData.produtoId} 
-                onValueChange={(value) => setFormData({ ...formData, produtoId: value })}
+              <Select
+                value={formData.produtoId}
+                onValueChange={(value: any) =>
+                  setFormData(prev => ({ ...prev, produtoId: value }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o produto" />
@@ -256,7 +324,9 @@ export function MovimentacoesPage() {
               <Alert>
                 <AlertTriangle className="size-4" />
                 <AlertDescription>
-                  Estoque atual: {produtos.find(p => p.id === formData.produtoId)?.quantidadeEstoque || 0} unidades
+                  Estoque atual:{' '}
+                  {produtos.find(p => p.id === formData.produtoId)?.quantidadeEstoque || 0}{' '}
+                  unidades
                 </AlertDescription>
               </Alert>
             )}
@@ -268,20 +338,20 @@ export function MovimentacoesPage() {
                 min="1"
                 max="99999"
                 value={formData.quantidade}
-                onChange={(e) => {
+                onChange={e => {
                   const value = e.target.value;
                   if (value === '' || (/^\d+$/.test(value) && value.length <= 5)) {
-                    setFormData({ ...formData, quantidade: value });
+                    setFormData(prev => ({ ...prev, quantidade: value }));
                   }
                 }}
-                onBlur={(e) => {
-                  const num = parseInt(e.target.value) || 0;
+                onBlur={e => {
+                  const num = parseInt(e.target.value, 10) || 0;
                   if (num < 0) {
                     toast.error('Quantidade não pode ser menor que zero');
-                    setFormData({ ...formData, quantidade: '' });
+                    setFormData(prev => ({ ...prev, quantidade: '' }));
                   } else if (num === 0 && e.target.value !== '') {
                     toast.error('Quantidade deve ser maior que zero');
-                    setFormData({ ...formData, quantidade: '' });
+                    setFormData(prev => ({ ...prev, quantidade: '' }));
                   }
                 }}
               />
@@ -293,7 +363,9 @@ export function MovimentacoesPage() {
                 id="observacao"
                 placeholder="Ex: Compra de fornecedor, venda, devolução, etc."
                 value={formData.observacao}
-                onChange={(e) => setFormData({ ...formData, observacao: e.target.value })}
+                onChange={e =>
+                  setFormData(prev => ({ ...prev, observacao: e.target.value }))
+                }
                 rows={3}
               />
             </div>
@@ -302,8 +374,8 @@ export function MovimentacoesPage() {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
-              Registrar
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Registrando...' : 'Registrar'}
             </Button>
           </DialogFooter>
         </DialogContent>

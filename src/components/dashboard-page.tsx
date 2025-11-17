@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Produto, Movimentacao } from '../types';
+import type { Produto, Movimentacao } from '../types';
 import { getProdutos, getMovimentacoes, getCategorias } from '../lib/storage';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { BookOpen, Package, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
