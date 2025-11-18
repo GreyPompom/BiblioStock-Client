@@ -4,14 +4,16 @@ import { getProdutos, saveProdutos, getCategorias, getAutores } from '../lib/sto
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { fetchProdutos } from '../lib/api/productsApi';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Plus, Pencil, Trash2, Search, AlertTriangle, X } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Checkbox } from './ui/checkbox';
+import api from '../lib/api';
 
 export function ProdutosPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -24,7 +26,7 @@ export function ProdutosPage() {
   const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('all');
-  
+
   const [formData, setFormData] = useState({
     nome: '',
     precoUnitario: '',
@@ -46,10 +48,19 @@ export function ProdutosPage() {
     filterProdutos();
   }, [produtos, searchTerm, filterCategoria]);
 
-  const loadData = () => {
-    setProdutos(getProdutos());
-    setCategorias(getCategorias());
-    setAutores(getAutores());
+  const loadData = async () => {
+    try {
+      const produtosData = await fetchProdutos();
+      setProdutos(produtosData);
+      // Se você tiver endpoints para categorias e autores:
+      const categoriasRes = await api.get<Categoria[]>('/categories');
+      setCategorias(categoriasRes.data);
+      const autoresRes = await api.get<Autor[]>('/authors');
+      setAutores(autoresRes.data);
+    } catch (error) {
+      toast.error('Erro ao carregar dados da API');
+      console.error(error);
+    }
   };
 
   const filterProdutos = () => {
@@ -112,7 +123,7 @@ export function ProdutosPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.nome || !formData.categoriaId || !formData.precoUnitario) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
@@ -154,29 +165,37 @@ export function ProdutosPage() {
       dataCadastro: editingProduto?.dataCadastro || new Date().toISOString(),
     };
 
-    const updatedProdutos = editingProduto
-      ? produtos.map(p => p.id === editingProduto.id ? novoProduto : p)
-      : [...produtos, novoProduto];
+    try {
+      if (editingProduto) {
+        await api.put(`/products/${editingProduto.id}`, novoProduto);
+        setProdutos(prev => prev.map(p => p.id === editingProduto.id ? novoProduto : p));
+        toast.success('Produto atualizado com sucesso!');
+      } else {
+        const res = await api.post('/products', novoProduto);
+        setProdutos(prev => [...prev, res.data]);
+        toast.success('Produto cadastrado com sucesso!');
+      }
+    } catch (error) {
+      toast.error('Erro ao salvar produto');
+      console.error(error);
+    }
 
-    saveProdutos(updatedProdutos);
-    setProdutos(updatedProdutos);
     setIsDialogOpen(false);
     resetForm();
-    toast.success(editingProduto ? 'Produto atualizado com sucesso!' : 'Produto cadastrado com sucesso!');
   };
 
-  const handleDelete = (id: string) => {
-    setProdutoToDelete(id);
-    setIsDeleteDialogOpen(true);
-  };
+  const confirmDelete = async () => {
+    if (!produtoToDelete) return;
 
-  const confirmDelete = () => {
-    if (produtoToDelete) {
-      const updatedProdutos = produtos.filter(p => p.id !== produtoToDelete);
-      saveProdutos(updatedProdutos);
-      setProdutos(updatedProdutos);
+    try {
+      await api.delete(`/products/${produtoToDelete}`);
+      setProdutos(prev => prev.filter(p => p.id !== produtoToDelete));
       toast.success('Produto excluído com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao excluir produto');
+      console.error(error);
     }
+
     setIsDeleteDialogOpen(false);
     setProdutoToDelete(null);
   };
