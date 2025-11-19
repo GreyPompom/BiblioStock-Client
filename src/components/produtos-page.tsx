@@ -14,6 +14,26 @@ import { toast } from 'sonner';
 import { Checkbox } from './ui/checkbox';
 import api from '../lib/api';
 
+// Função para mapear produto do backend para frontend
+const mapProdutoFromBackend = (produtoBackend: any): Produto => {
+  console.log('Mapeando produto do backend:', produtoBackend); // Debug
+  return {
+    id: produtoBackend.id,
+    nome: produtoBackend.name || produtoBackend.nome || '-',
+    sku: produtoBackend.sku || '-',
+    tipoProduto: produtoBackend.productType || produtoBackend.tipoProduto || 'Livro',
+    precoUnitario: produtoBackend.price || produtoBackend.precoUnitario || 0,
+    unidadeMedida: produtoBackend.unit || produtoBackend.unidadeMedida || 'unidade',
+    quantidadeEstoque: produtoBackend.stockQty || produtoBackend.quantidadeEstoque || 0,
+    quantidadeMinima: produtoBackend.minQty || produtoBackend.quantidadeMinima || 0,
+    quantidadeMaxima: produtoBackend.maxQty || produtoBackend.quantidadeMaxima || 0,
+    categoriaId: (produtoBackend.categoryId || produtoBackend.categoriaId)?.toString() || '',
+    authorIds: (produtoBackend.authorIds || produtoBackend.authorIds || []).map((id: any) => id.toString()),
+    editora: produtoBackend.publisher || produtoBackend.editora || '-',
+    isbn: produtoBackend.isbn || '-'
+  };
+};
+
 export function ProdutosPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -26,6 +46,7 @@ export function ProdutosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('all');
   const [filterTipoProduto, setFilterTipoProduto] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     nome: '',
@@ -52,17 +73,36 @@ export function ProdutosPage() {
 
   const loadData = async () => {
     try {
+      setIsLoading(true);
+      console.log('Carregando dados...'); // Debug
+
       const produtosData = await fetchProdutos();
-      setProdutos(produtosData);
+      console.log('Produtos recebidos:', produtosData); // Debug
+
+      // Garantir que todos os produtos estão mapeados corretamente
+      const produtosMapeados = produtosData.map((produto: any) => {
+        // Se o produto já veio mapeado do fetchProdutos, use-o diretamente
+        if (produto.nome && produto.sku !== undefined) {
+          return produto;
+        }
+        // Caso contrário, mapeie
+        return mapProdutoFromBackend(produto);
+      });
+
+      console.log('Produtos mapeados:', produtosMapeados); // Debug
+      setProdutos(produtosMapeados);
 
       const categoriasRes = await api.get<Categoria[]>('/categories');
       setCategorias(categoriasRes.data);
 
       const autoresRes = await api.get<Autor[]>('/authors');
       setAutores(autoresRes.data);
+
     } catch (error) {
       toast.error('Erro ao carregar dados da API');
-      console.error(error);
+      console.error('Erro detalhado:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -78,8 +118,8 @@ export function ProdutosPage() {
           (p.sku && p.sku.toLowerCase().includes(term)) ||
           (p.tipoProduto && p.tipoProduto.toLowerCase().includes(term)) ||
           autoresNomes.includes(term) ||
-          p.editora.toLowerCase().includes(term) ||
-          p.isbn.includes(term)
+          (p.editora && p.editora.toLowerCase().includes(term)) ||
+          (p.isbn && p.isbn.includes(term))
         );
       });
     }
@@ -115,20 +155,21 @@ export function ProdutosPage() {
 
   const handleOpenDialog = (produto?: Produto) => {
     if (produto) {
+      console.log('Editando produto:', produto); // Debug
       setEditingProduto(produto);
       setFormData({
-        nome: produto.nome,
-        sku: produto.sku,
-        tipoProduto: produto.tipoProduto,
-        precoUnitario: produto.precoUnitario.toString(),
-        unidadeMedida: produto.unidadeMedida,
-        quantidadeEstoque: produto.quantidadeEstoque.toString(),
-        quantidadeMinima: produto.quantidadeMinima.toString(),
-        quantidadeMaxima: produto.quantidadeMaxima.toString(),
-        categoriaId: produto.categoriaId,
+        nome: produto.nome || '',
+        sku: produto.sku || '',
+        tipoProduto: produto.tipoProduto || 'Livro',
+        precoUnitario: produto.precoUnitario?.toString() || '',
+        unidadeMedida: produto.unidadeMedida || 'unidade',
+        quantidadeEstoque: produto.quantidadeEstoque?.toString() || '',
+        quantidadeMinima: produto.quantidadeMinima?.toString() || '',
+        quantidadeMaxima: produto.quantidadeMaxima?.toString() || '',
+        categoriaId: produto.categoriaId || '',
         authorIds: produto.authorIds || [],
-        editora: produto.editora,
-        isbn: produto.isbn
+        editora: produto.editora || '',
+        isbn: produto.isbn || ''
       });
     } else {
       resetForm();
@@ -158,64 +199,160 @@ export function ProdutosPage() {
   };
 
   const handleSave = async () => {
-  try {
-    // validação mínima
-    if (!formData.nome || !formData.precoUnitario || !formData.categoriaId || formData.authorIds.length === 0) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
+
+    try {
+      // Validação de Nome do Produto (obrigatório)
+      if (!formData.nome || formData.nome.trim() === '') {
+        toast.error('O nome do produto é obrigatório.');
+        return;
+      }
+
+      // Validação de SKU (obrigatório)
+      if (!formData.sku || formData.sku.trim() === '') {
+        toast.error('O SKU é obrigatório.');
+        return;
+      }
+
+      // Validação de ISBN (obrigatório)
+      if (!formData.isbn || formData.isbn.trim() === '') {
+        toast.error('O ISBN é obrigatório.');
+        return;
+      }
+
+      // Validação de Tipo de Produto (obrigatório)
+      if (!formData.tipoProduto || formData.tipoProduto.trim() === '') {
+        toast.error('O tipo de produto é obrigatório.');
+        return;
+      }
+
+      // Validação de Categoria (obrigatório)
+      if (!formData.categoriaId) {
+        toast.error('A categoria é obrigatória.');
+        return;
+      }
+
+      // Validação de Autores (obrigatório)
+      if (formData.authorIds.length === 0) {
+        toast.error('Selecione pelo menos um autor.');
+        return;
+      }
+
+      // Validação de Preço (obrigatório e > 0)
+      if (!formData.precoUnitario || formData.precoUnitario.trim() === '') {
+        toast.error('O preço é obrigatório.');
+        return;
+      }
+      const preco = parseFloat(formData.precoUnitario);
+      if (isNaN(preco) || preco <= 0) {
+        toast.error('O preço deve ser maior que zero.');
+        return;
+      }
+
+      // Validação de Quantidade em Estoque (obrigatório e >= 0)
+      const estoqueStr = formData.quantidadeEstoque.trim();
+      if (estoqueStr === '') {
+        toast.error('A quantidade em estoque é obrigatória.');
+        return;
+      }
+      const estoque = parseInt(estoqueStr);
+      if (isNaN(estoque) || estoque < 0) {
+        toast.error('A quantidade em estoque não pode ser negativa.');
+        return;
+      }
+      if (estoque > 99999) {
+        toast.error('A quantidade em estoque não pode ter mais de 5 dígitos.');
+        return;
+      }
+
+      // Validação de Quantidade Mínima (obrigatório e > 0)
+      const minimaStr = formData.quantidadeMinima.trim();
+      if (minimaStr === '') {
+        toast.error('A quantidade mínima é obrigatória.');
+        return;
+      }
+      const minima = parseInt(minimaStr);
+      if (isNaN(minima) || minima <= 0) {
+        toast.error('A quantidade mínima deve ser maior que zero.');
+        return;
+      }
+      if (minima > 99999) {
+        toast.error('A quantidade mínima não pode ter mais de 5 dígitos.');
+        return;
+      }
+
+      // Validação de Quantidade Máxima (opcional, mas se preenchido deve ser válido)
+      let maxima = 0;
+      const maximaStr = formData.quantidadeMaxima.trim();
+      if (maximaStr !== '') {
+        maxima = parseInt(maximaStr);
+        if (isNaN(maxima) || maxima < 0) {
+          toast.error('A quantidade máxima não pode ser negativa.');
+          return;
+        }
+        if (maxima > 99999) {
+          toast.error('A quantidade máxima não pode ter mais de 5 dígitos.');
+          return;
+        }
+      }
+
+      // payload CORRETO baseado na estrutura do seu backend
+      const payload = {
+        name: formData.nome,
+        sku: formData.sku || undefined, // Mude de null para undefined
+        productType: formData.tipoProduto || 'Livro',
+        price: preco,
+        unit: formData.unidadeMedida || 'unidade',
+        stockQty: estoque,
+        minQty: minima,
+        maxQty: maxima,
+        categoryId: Number(formData.categoriaId), // O backend espera categoryId, não categoriaId
+        authorIds: formData.authorIds.map(id => Number(id)),
+        publisher: formData.editora || undefined, // Mude de null para undefined
+        isbn: formData.isbn || undefined // Mude de null para undefined
+      };
+
+      console.log('Enviando payload:', payload); // Debug
+
+      if (editingProduto) {
+        const res = await api.put(`/products/${editingProduto.id}`, payload);
+        console.log('Resposta da edição:', res.data); // Debug
+
+        // Use a função de mapeamento
+        const updatedProduto = mapProdutoFromBackend(res.data);
+
+        setProdutos(prev =>
+          prev.map(p => (p.id === editingProduto.id ? updatedProduto : p))
+        );
+        toast.success('Produto atualizado com sucesso!');
+      }
+      else {
+        // criar
+        const res = await api.post('/products', payload);
+        console.log('Resposta da criação:', res.data); // Debug
+        // Mapeie a resposta do backend
+        const novoProduto = mapProdutoFromBackend(res.data);
+        setProdutos(prev => [...prev, novoProduto]);
+        toast.success('Produto criado com sucesso!');
+      }
+
+      // fecha modal e reseta formulário
+      setIsDialogOpen(false);
+      resetForm();
+
+    } catch (error: any) {
+      if (error.response) {
+        console.error('API error:', error.response.data);
+        toast.error('Erro ao salvar produto: ' + (error.response.data?.message || 'Verifique os campos'));
+      } else {
+        console.error(error);
+        toast.error('Erro ao salvar produto');
+      }
     }
-
-    // conversão de números
-    const estoque = parseInt(formData.quantidadeEstoque) || 0;
-    const minima = parseInt(formData.quantidadeMinima) || 0;
-    const maxima = parseInt(formData.quantidadeMaxima) || 0;
-    const preco = parseFloat(formData.precoUnitario) || 0;
-
-    // payload com tipos corretos
-    const payload = {
-      name: formData.nome,
-      sku: formData.sku || null,
-      productType: formData.tipoProduto || 'Livro',
-      price: preco,
-      unit: formData.unidadeMedida || 'unidade',
-      stockQty: estoque,
-      minQty: minima,
-      maxQty: maxima,
-      categoryId: Number(formData.categoriaId),
-      authorIds: formData.authorIds.map(id => Number(id)),
-      publisher: formData.editora || null,
-      isbn: formData.isbn || null
-    };
-
-    if (editingProduto) {
-      // editar
-      const res = await api.put(`/products/${editingProduto.id}`, payload);
-      setProdutos(prev => prev.map(p => (p.id === editingProduto.id ? res.data : p)));
-      toast.success('Produto atualizado com sucesso!');
-    } else {
-      // criar
-      const res = await api.post('/products', payload);
-      setProdutos(prev => [...prev, res.data]);
-      toast.success('Produto criado com sucesso!');
-    }
-
-    // fecha modal e reseta formulário
-    setIsDialogOpen(false);
-    resetForm();
-
-  } catch (error: any) {
-    if (error.response) {
-      console.error('API error:', error.response.data);
-      toast.error('Erro ao salvar produto: ' + (error.response.data?.message || 'Verifique os campos'));
-    } else {
-      console.error(error);
-      toast.error('Erro ao salvar produto');
-    }
-  }
-};
+  };
 
   const getCategoriaNome = (categoriaId: string) => {
-    return categorias.find(c => c.id === categoriaId)?.nome || 'N/A';
+    const categoria = categorias.find(c => c.id === categoriaId);
+    return categoria?.nome || 'N/A';
   };
 
   const getAutoresNomes = (authorIds: string[]) => {
@@ -244,6 +381,17 @@ export function ProdutosPage() {
       : [...formData.authorIds, authorId];
     setFormData({ ...formData, authorIds: newAuthorIds });
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Carregando produtos...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -299,11 +447,16 @@ export function ProdutosPage() {
             <TableRow>
               <TableHead>SKU</TableHead>
               <TableHead>Nome</TableHead>
+              <TableHead>ISBN</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Autor(es)</TableHead>
+              <TableHead>Editora</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Preço</TableHead>
-              <TableHead>Estoque</TableHead>
+              <TableHead>Unidade</TableHead>
+              <TableHead>Qtd. Estoque</TableHead>
+              <TableHead>Qtd. Mínima</TableHead>
+              <TableHead>Qtd. Máxima</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -311,7 +464,7 @@ export function ProdutosPage() {
           <TableBody>
             {filteredProdutos.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={14} className="h-24 text-center text-muted-foreground">
                   Nenhum produto encontrado
                 </TableCell>
               </TableRow>
@@ -319,30 +472,23 @@ export function ProdutosPage() {
               filteredProdutos.map(produto => (
                 <TableRow key={produto.id}>
                   <TableCell>{produto.sku || '-'}</TableCell>
-                  <TableCell>{produto.nome || '-'}</TableCell>
+                  <TableCell>{produto.nome}</TableCell>
+                  <TableCell>{produto.isbn || '-'}</TableCell>
                   <TableCell>{produto.tipoProduto || '-'}</TableCell>
                   <TableCell>{getAutoresNomes(produto.authorIds)}</TableCell>
+                  <TableCell>{produto.editora || '-'}</TableCell>
                   <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
+                  <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
+                  <TableCell>{produto.unidadeMedida || '-'}</TableCell>
                   <TableCell>
-                    {produto.precoUnitario !== undefined
-                      ? `R$ ${produto.precoUnitario.toFixed(2)}`
-                      : '-'}
+                    {produto.quantidadeEstoque}
+                    {produto.quantidadeEstoque < produto.quantidadeMinima && (
+                      <AlertTriangle className="ml-1 inline size-4 text-orange-500" />
+                    )}
                   </TableCell>
-                  <TableCell>
-                    {produto.quantidadeEstoque ?? '-'}
-                    {produto.quantidadeEstoque !== undefined &&
-                      produto.quantidadeMinima !== undefined &&
-                      produto.quantidadeEstoque < produto.quantidadeMinima && (
-                        <AlertTriangle className="ml-1 inline size-4 text-orange-500" />
-                      )}
-                  </TableCell>
-                  <TableCell>
-                    {produto.quantidadeEstoque !== undefined &&
-                      produto.quantidadeMinima !== undefined &&
-                      produto.quantidadeMaxima !== undefined
-                      ? getStatusBadge(produto)
-                      : <Badge variant="secondary">N/A</Badge>}
-                  </TableCell>
+                  <TableCell>{produto.quantidadeMinima}</TableCell>
+                  <TableCell>{produto.quantidadeMaxima || '-'}</TableCell>
+                  <TableCell>{getStatusBadge(produto)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(produto)}>
@@ -373,6 +519,7 @@ export function ProdutosPage() {
               <Label htmlFor="nome">Nome do Produto *</Label>
               <Input
                 id="nome"
+                maxLength={200}
                 value={formData.nome}
                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
               />
@@ -380,16 +527,17 @@ export function ProdutosPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="sku">SKU</Label>
+                <Label htmlFor="sku">SKU *</Label>
                 <Input
                   id="sku"
+                  maxLength={50}
                   value={formData.sku}
                   onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
                   placeholder="Ex: LIV-001"
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="tipoProduto">Tipo de Produto</Label>
+                <Label htmlFor="tipoProduto">Tipo de Produto *</Label>
                 <Select value={formData.tipoProduto} onValueChange={(value) => setFormData({ ...formData, tipoProduto: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo" />
@@ -456,14 +604,16 @@ export function ProdutosPage() {
                 <Label htmlFor="editora">Editora</Label>
                 <Input
                   id="editora"
+                  maxLength={100}
                   value={formData.editora}
                   onChange={(e) => setFormData({ ...formData, editora: e.target.value })}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="isbn">ISBN</Label>
+                <Label htmlFor="isbn">ISBN *</Label>
                 <Input
                   id="isbn"
+                  maxLength={20}
                   value={formData.isbn}
                   onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
                 />
@@ -506,6 +656,7 @@ export function ProdutosPage() {
                 <Label htmlFor="unidade">Unidade de Medida</Label>
                 <Input
                   id="unidade"
+                  maxLength={20}
                   value={formData.unidadeMedida}
                   onChange={(e) => setFormData({ ...formData, unidadeMedida: e.target.value })}
                 />
@@ -513,7 +664,7 @@ export function ProdutosPage() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="estoque">Qtd. Estoque</Label>
+                <Label htmlFor="estoque">Qtd. Estoque *</Label>
                 <Input
                   id="estoque"
                   type="number"
@@ -536,7 +687,7 @@ export function ProdutosPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="minima">Qtd. Mínima</Label>
+                <Label htmlFor="minima">Qtd. Mínima *</Label>
                 <Input
                   id="minima"
                   type="number"

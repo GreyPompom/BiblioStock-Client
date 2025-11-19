@@ -28,7 +28,6 @@ export type Produto = {
   authorIds: string[];
   editora: string;
   isbn: string;
-  dataCadastro: string;
 };
 
 export type TipoMovimentacao = 'Entrada' | 'Saída';

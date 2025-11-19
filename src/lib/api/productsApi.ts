@@ -1,21 +1,27 @@
+// lib/api/productsApi.ts
 import api from '../api';
-import type { Produto } from '../../types';
 
-export async function fetchProdutos(): Promise<Produto[]> {
-  const { data } = await api.get('/products'); // data é do tipo da API
-  return data.map((prod: any) => ({
-    id: prod.id.toString(),
-    nome: prod.name,
-    precoUnitario: prod.price,
-    unidadeMedida: prod.unit,
-    quantidadeEstoque: prod.stockQty,
-    quantidadeMinima: prod.minQty,
-    quantidadeMaxima: prod.maxQty,
-    categoriaId: prod.category.id.toString(),
-    authorIds: prod.authors.map((a: any) => a.id.toString()),
-    editora: prod.publisher,
-    isbn: prod.isbn,
-    dataCadastro: new Date().toISOString() // ou outro campo da API se tiver
-  }));
-}
-
+export const fetchProdutos = async () => {
+  try {
+    const response = await api.get('/products');
+    // Mapeie os dados do backend para o frontend
+    return response.data.map((produto: any) => ({
+      id: produto.id,
+      nome: produto.name,
+      sku: produto.sku,
+      tipoProduto: produto.productType,
+      precoUnitario: produto.price,
+      unidadeMedida: produto.unit,
+      quantidadeEstoque: produto.stockQty,
+      quantidadeMinima: produto.minQty,
+      quantidadeMaxima: produto.maxQty,
+      categoriaId: produto.categoryId?.toString() || '',
+      authorIds: (produto.authorIds || []).map((id: number) => id.toString()),
+      editora: produto.publisher,
+      isbn: produto.isbn
+    }));
+  } catch (error) {
+    console.error('Erro ao buscar produtos:', error);
+    throw error;
+  }
+};
