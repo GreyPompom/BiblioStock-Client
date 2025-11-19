@@ -201,114 +201,26 @@ export function ProdutosPage() {
   const handleSave = async () => {
 
     try {
-      // Validação de Nome do Produto (obrigatório)
-      if (!formData.nome || formData.nome.trim() === '') {
-        toast.error('O nome do produto é obrigatório.');
-        return;
-      }
 
-      // Validação de SKU (obrigatório)
-      if (!formData.sku || formData.sku.trim() === '') {
-        toast.error('O SKU é obrigatório.');
-        return;
-      }
+      const estoque = parseInt(formData.quantidadeEstoque) || 0;
+      const minima = parseInt(formData.quantidadeMinima) || 0;
+      const maxima = parseInt(formData.quantidadeMaxima) || 0;
+      const preco = parseFloat(formData.precoUnitario) || 0;
 
-      // Validação de ISBN (obrigatório)
-      if (!formData.isbn || formData.isbn.trim() === '') {
-        toast.error('O ISBN é obrigatório.');
-        return;
-      }
-
-      // Validação de Tipo de Produto (obrigatório)
-      if (!formData.tipoProduto || formData.tipoProduto.trim() === '') {
-        toast.error('O tipo de produto é obrigatório.');
-        return;
-      }
-
-      // Validação de Categoria (obrigatório)
-      if (!formData.categoriaId) {
-        toast.error('A categoria é obrigatória.');
-        return;
-      }
-
-      // Validação de Autores (obrigatório)
-      if (formData.authorIds.length === 0) {
-        toast.error('Selecione pelo menos um autor.');
-        return;
-      }
-
-      // Validação de Preço (obrigatório e > 0)
-      if (!formData.precoUnitario || formData.precoUnitario.trim() === '') {
-        toast.error('O preço é obrigatório.');
-        return;
-      }
-      const preco = parseFloat(formData.precoUnitario);
-      if (isNaN(preco) || preco <= 0) {
-        toast.error('O preço deve ser maior que zero.');
-        return;
-      }
-
-      // Validação de Quantidade em Estoque (obrigatório e >= 0)
-      const estoqueStr = formData.quantidadeEstoque.trim();
-      if (estoqueStr === '') {
-        toast.error('A quantidade em estoque é obrigatória.');
-        return;
-      }
-      const estoque = parseInt(estoqueStr);
-      if (isNaN(estoque) || estoque < 0) {
-        toast.error('A quantidade em estoque não pode ser negativa.');
-        return;
-      }
-      if (estoque > 99999) {
-        toast.error('A quantidade em estoque não pode ter mais de 5 dígitos.');
-        return;
-      }
-
-      // Validação de Quantidade Mínima (obrigatório e > 0)
-      const minimaStr = formData.quantidadeMinima.trim();
-      if (minimaStr === '') {
-        toast.error('A quantidade mínima é obrigatória.');
-        return;
-      }
-      const minima = parseInt(minimaStr);
-      if (isNaN(minima) || minima <= 0) {
-        toast.error('A quantidade mínima deve ser maior que zero.');
-        return;
-      }
-      if (minima > 99999) {
-        toast.error('A quantidade mínima não pode ter mais de 5 dígitos.');
-        return;
-      }
-
-      // Validação de Quantidade Máxima (opcional, mas se preenchido deve ser válido)
-      let maxima = 0;
-      const maximaStr = formData.quantidadeMaxima.trim();
-      if (maximaStr !== '') {
-        maxima = parseInt(maximaStr);
-        if (isNaN(maxima) || maxima < 0) {
-          toast.error('A quantidade máxima não pode ser negativa.');
-          return;
-        }
-        if (maxima > 99999) {
-          toast.error('A quantidade máxima não pode ter mais de 5 dígitos.');
-          return;
-        }
-      }
-
-      // payload CORRETO baseado na estrutura do seu backend
+      // payload CORRETO baseado na estrutura do backend
       const payload = {
         name: formData.nome,
-        sku: formData.sku || undefined, // Mude de null para undefined
+        sku: formData.sku || undefined,
         productType: formData.tipoProduto || 'Livro',
         price: preco,
         unit: formData.unidadeMedida || 'unidade',
         stockQty: estoque,
         minQty: minima,
         maxQty: maxima,
-        categoryId: Number(formData.categoriaId), // O backend espera categoryId, não categoriaId
+        categoryId: Number(formData.categoriaId),
         authorIds: formData.authorIds.map(id => Number(id)),
-        publisher: formData.editora || undefined, // Mude de null para undefined
-        isbn: formData.isbn || undefined // Mude de null para undefined
+        publisher: formData.editora || undefined,
+        isbn: formData.isbn || undefined
       };
 
       console.log('Enviando payload:', payload); // Debug
@@ -317,7 +229,6 @@ export function ProdutosPage() {
         const res = await api.put(`/products/${editingProduto.id}`, payload);
         console.log('Resposta da edição:', res.data); // Debug
 
-        // Use a função de mapeamento
         const updatedProduto = mapProdutoFromBackend(res.data);
 
         setProdutos(prev =>
@@ -329,7 +240,7 @@ export function ProdutosPage() {
         // criar
         const res = await api.post('/products', payload);
         console.log('Resposta da criação:', res.data); // Debug
-        // Mapeie a resposta do backend
+
         const novoProduto = mapProdutoFromBackend(res.data);
         setProdutos(prev => [...prev, novoProduto]);
         toast.success('Produto criado com sucesso!');
@@ -342,12 +253,60 @@ export function ProdutosPage() {
     } catch (error: any) {
       if (error.response) {
         console.error('API error:', error.response.data);
-        toast.error('Erro ao salvar produto: ' + (error.response.data?.message || 'Verifique os campos'));
+        // Extrai a mensagem de erro do backend
+        const errorMessage = extractBackendErrorMessage(error.response.data);
+        toast.error(errorMessage);
       } else {
         console.error(error);
         toast.error('Erro ao salvar produto');
       }
     }
+  };
+
+  // Função auxiliar para extrair mensagens de erro do backend
+  const extractBackendErrorMessage = (errorData: any): string => {
+    // Tenta diferentes formatos de resposta de erro do Spring Boot
+
+    // Formato 1: Erro direto
+    if (typeof errorData === 'string') {
+      return errorData;
+    }
+
+    // Formato 2: { error: "mensagem" }
+    if (errorData.error) {
+      return errorData.error;
+    }
+
+    // Formato 3: { message: "mensagem" }
+    if (errorData.message) {
+      return errorData.message;
+    }
+
+    // Formato 4: { details: "mensagem" }
+    if (errorData.details) {
+      return errorData.details;
+    }
+
+    // Formato 5: Array de errors de validação
+    if (Array.isArray(errorData.errors)) {
+      const messages = errorData.errors.map((err: any) =>
+        err.defaultMessage || err.message || err.field || 'Erro de validação'
+      );
+      return messages.join(', ');
+    }
+
+    // Formato 6: Objeto com campos de validação
+    if (typeof errorData === 'object') {
+      const messages = Object.values(errorData).filter(msg =>
+        typeof msg === 'string'
+      );
+      if (messages.length > 0) {
+        return messages.join(', ');
+      }
+    }
+
+    // Mensagem padrão
+    return 'Erro ao processar a solicitação. Tente novamente.';
   };
 
   const getCategoriaNome = (categoriaId: string) => {
@@ -435,7 +394,6 @@ export function ProdutosPage() {
             <SelectItem value="all">Todos os tipos</SelectItem>
             <SelectItem value="Livro">Livro</SelectItem>
             <SelectItem value="Revista">Revista</SelectItem>
-            <SelectItem value="Jornal">Jornal</SelectItem>
             <SelectItem value="Outro">Outro</SelectItem>
           </SelectContent>
         </Select>
@@ -545,7 +503,6 @@ export function ProdutosPage() {
                   <SelectContent>
                     <SelectItem value="Livro">Livro</SelectItem>
                     <SelectItem value="Revista">Revista</SelectItem>
-                    <SelectItem value="Jornal">Jornal</SelectItem>
                     <SelectItem value="Outro">Outro</SelectItem>
                   </SelectContent>
                 </Select>
