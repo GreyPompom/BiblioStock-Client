@@ -158,49 +158,61 @@ export function ProdutosPage() {
   };
 
   const handleSave = async () => {
-    try {
-      if (!formData.nome || !formData.precoUnitario || !formData.categoriaId || formData.authorIds.length === 0) {
-        toast.error('Preencha todos os campos obrigatórios');
-        return;
-      }
-
-      const estoque = parseInt(formData.quantidadeEstoque) || 0;
-      const minima = parseInt(formData.quantidadeMinima) || 0;
-      const maxima = parseInt(formData.quantidadeMaxima) || 0;
-
-      const payload = {
-        name: formData.nome,
-        sku: formData.sku,
-        productType: formData.tipoProduto,
-        price: parseFloat(formData.precoUnitario),
-        unit: formData.unidadeMedida,
-        stockQty: estoque,
-        minQty: minima,
-        maxQty: maxima,
-        categoryId: formData.categoriaId,
-        authorIds: formData.authorIds,
-        publisher: formData.editora,
-        isbn: formData.isbn
-      };
-
-      if (editingProduto) {
-        const res = await api.put(`/products/${editingProduto.id}`, payload);
-        setProdutos(prev => prev.map(p => (p.id === editingProduto.id ? res.data : p)));
-        toast.success('Produto atualizado com sucesso!');
-      } else {
-        const res = await api.post('/products', payload);
-        setProdutos(prev => [...prev, res.data]);
-        toast.success('Produto criado com sucesso!');
-      }
-
-      setIsDialogOpen(false);
-      resetForm();
-
-    } catch (error) {
-      toast.error('Erro ao salvar produto');
-      console.error(error);
+  try {
+    // validação mínima
+    if (!formData.nome || !formData.precoUnitario || !formData.categoriaId || formData.authorIds.length === 0) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
     }
-  };
+
+    // conversão de números
+    const estoque = parseInt(formData.quantidadeEstoque) || 0;
+    const minima = parseInt(formData.quantidadeMinima) || 0;
+    const maxima = parseInt(formData.quantidadeMaxima) || 0;
+    const preco = parseFloat(formData.precoUnitario) || 0;
+
+    // payload com tipos corretos
+    const payload = {
+      name: formData.nome,
+      sku: formData.sku || null,
+      productType: formData.tipoProduto || 'Livro',
+      price: preco,
+      unit: formData.unidadeMedida || 'unidade',
+      stockQty: estoque,
+      minQty: minima,
+      maxQty: maxima,
+      categoryId: Number(formData.categoriaId),
+      authorIds: formData.authorIds.map(id => Number(id)),
+      publisher: formData.editora || null,
+      isbn: formData.isbn || null
+    };
+
+    if (editingProduto) {
+      // editar
+      const res = await api.put(`/products/${editingProduto.id}`, payload);
+      setProdutos(prev => prev.map(p => (p.id === editingProduto.id ? res.data : p)));
+      toast.success('Produto atualizado com sucesso!');
+    } else {
+      // criar
+      const res = await api.post('/products', payload);
+      setProdutos(prev => [...prev, res.data]);
+      toast.success('Produto criado com sucesso!');
+    }
+
+    // fecha modal e reseta formulário
+    setIsDialogOpen(false);
+    resetForm();
+
+  } catch (error: any) {
+    if (error.response) {
+      console.error('API error:', error.response.data);
+      toast.error('Erro ao salvar produto: ' + (error.response.data?.message || 'Verifique os campos'));
+    } else {
+      console.error(error);
+      toast.error('Erro ao salvar produto');
+    }
+  }
+};
 
   const getCategoriaNome = (categoriaId: string) => {
     return categorias.find(c => c.id === categoriaId)?.nome || 'N/A';
@@ -307,18 +319,30 @@ export function ProdutosPage() {
               filteredProdutos.map(produto => (
                 <TableRow key={produto.id}>
                   <TableCell>{produto.sku || '-'}</TableCell>
-                  <TableCell>{produto.nome}</TableCell>
+                  <TableCell>{produto.nome || '-'}</TableCell>
                   <TableCell>{produto.tipoProduto || '-'}</TableCell>
                   <TableCell>{getAutoresNomes(produto.authorIds)}</TableCell>
                   <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
-                  <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
                   <TableCell>
-                    {produto.quantidadeEstoque}
-                    {produto.quantidadeEstoque < produto.quantidadeMinima && (
-                      <AlertTriangle className="ml-1 inline size-4 text-orange-500" />
-                    )}
+                    {produto.precoUnitario !== undefined
+                      ? `R$ ${produto.precoUnitario.toFixed(2)}`
+                      : '-'}
                   </TableCell>
-                  <TableCell>{getStatusBadge(produto)}</TableCell>
+                  <TableCell>
+                    {produto.quantidadeEstoque ?? '-'}
+                    {produto.quantidadeEstoque !== undefined &&
+                      produto.quantidadeMinima !== undefined &&
+                      produto.quantidadeEstoque < produto.quantidadeMinima && (
+                        <AlertTriangle className="ml-1 inline size-4 text-orange-500" />
+                      )}
+                  </TableCell>
+                  <TableCell>
+                    {produto.quantidadeEstoque !== undefined &&
+                      produto.quantidadeMinima !== undefined &&
+                      produto.quantidadeMaxima !== undefined
+                      ? getStatusBadge(produto)
+                      : <Badge variant="secondary">N/A</Badge>}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(produto)}>
