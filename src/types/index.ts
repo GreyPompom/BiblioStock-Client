@@ -27,6 +27,7 @@ export type Produto = {
   editora: string;
   isbn: string;
   dataCadastro: string;
+  priceComPercentualReajuste?: number;
 };
 
 export type TipoMovimentacao = 'Entrada' | 'Saída';
