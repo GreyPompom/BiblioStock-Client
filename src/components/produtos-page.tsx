@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Produto, Categoria, Autor } from '../types';
-import { getProdutos, saveProdutos, getCategorias, getAutores } from '../lib/storage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -26,9 +25,12 @@ export function ProdutosPage() {
   const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('all');
+  const [filterTipoProduto, setFilterTipoProduto] = useState('all');
 
   const [formData, setFormData] = useState({
     nome: '',
+    sku: '',
+    tipoProduto: 'Livro',
     precoUnitario: '',
     unidadeMedida: 'unidade',
     quantidadeEstoque: '',
@@ -37,7 +39,7 @@ export function ProdutosPage() {
     categoriaId: '',
     authorIds: [] as string[],
     editora: '',
-    isbn: '',
+    isbn: ''
   });
 
   useEffect(() => {
@@ -46,15 +48,16 @@ export function ProdutosPage() {
 
   useEffect(() => {
     filterProdutos();
-  }, [produtos, searchTerm, filterCategoria]);
+  }, [produtos, searchTerm, filterCategoria, filterTipoProduto]);
 
   const loadData = async () => {
     try {
       const produtosData = await fetchProdutos();
       setProdutos(produtosData);
-      // Se você tiver endpoints para categorias e autores:
+
       const categoriasRes = await api.get<Categoria[]>('/categories');
       setCategorias(categoriasRes.data);
+
       const autoresRes = await api.get<Autor[]>('/authors');
       setAutores(autoresRes.data);
     } catch (error) {
@@ -72,6 +75,8 @@ export function ProdutosPage() {
         const autoresNomes = getAutoresNomes(p.authorIds).toLowerCase();
         return (
           p.nome.toLowerCase().includes(term) ||
+          (p.sku && p.sku.toLowerCase().includes(term)) ||
+          (p.tipoProduto && p.tipoProduto.toLowerCase().includes(term)) ||
           autoresNomes.includes(term) ||
           p.editora.toLowerCase().includes(term) ||
           p.isbn.includes(term)
@@ -83,12 +88,18 @@ export function ProdutosPage() {
       filtered = filtered.filter(p => p.categoriaId === filterCategoria);
     }
 
+    if (filterTipoProduto !== 'all') {
+      filtered = filtered.filter(p => p.tipoProduto === filterTipoProduto);
+    }
+
     setFilteredProdutos(filtered);
   };
 
   const resetForm = () => {
     setFormData({
       nome: '',
+      sku: '',
+      tipoProduto: 'Livro',
       precoUnitario: '',
       unidadeMedida: 'unidade',
       quantidadeEstoque: '',
@@ -97,7 +108,7 @@ export function ProdutosPage() {
       categoriaId: '',
       authorIds: [],
       editora: '',
-      isbn: '',
+      isbn: ''
     });
     setEditingProduto(null);
   };
@@ -107,6 +118,8 @@ export function ProdutosPage() {
       setEditingProduto(produto);
       setFormData({
         nome: produto.nome,
+        sku: produto.sku,
+        tipoProduto: produto.tipoProduto,
         precoUnitario: produto.precoUnitario.toString(),
         unidadeMedida: produto.unidadeMedida,
         quantidadeEstoque: produto.quantidadeEstoque.toString(),
@@ -115,7 +128,7 @@ export function ProdutosPage() {
         categoriaId: produto.categoriaId,
         authorIds: produto.authorIds || [],
         editora: produto.editora,
-        isbn: produto.isbn,
+        isbn: produto.isbn
       });
     } else {
       resetForm();
@@ -123,65 +136,9 @@ export function ProdutosPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!formData.nome || !formData.categoriaId || !formData.precoUnitario) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    // RN006: Cada livro deve ter pelo menos um autor associado
-    if (formData.authorIds.length === 0) {
-      toast.error('Selecione pelo menos um autor para o livro');
-      return;
-    }
-
-    // Validações de quantidade
-    const estoque = parseInt(formData.quantidadeEstoque) || 0;
-    const minima = parseInt(formData.quantidadeMinima) || 0;
-    const maxima = parseInt(formData.quantidadeMaxima) || 0;
-
-    if (estoque < 0 || minima < 0 || maxima < 0) {
-      toast.error('As quantidades não podem ser menores que zero');
-      return;
-    }
-
-    if (estoque > 99999 || minima > 99999 || maxima > 99999) {
-      toast.error('As quantidades não podem ter mais de 5 dígitos');
-      return;
-    }
-
-    const novoProduto: Produto = {
-      id: editingProduto?.id || Date.now().toString(),
-      nome: formData.nome,
-      precoUnitario: parseFloat(formData.precoUnitario),
-      unidadeMedida: formData.unidadeMedida,
-      quantidadeEstoque: parseInt(formData.quantidadeEstoque) || 0,
-      quantidadeMinima: parseInt(formData.quantidadeMinima) || 0,
-      quantidadeMaxima: parseInt(formData.quantidadeMaxima) || 0,
-      categoriaId: formData.categoriaId,
-      authorIds: formData.authorIds,
-      editora: formData.editora,
-      isbn: formData.isbn,
-      dataCadastro: editingProduto?.dataCadastro || new Date().toISOString(),
-    };
-
-    try {
-      if (editingProduto) {
-        await api.put(`/products/${editingProduto.id}`, novoProduto);
-        setProdutos(prev => prev.map(p => p.id === editingProduto.id ? novoProduto : p));
-        toast.success('Produto atualizado com sucesso!');
-      } else {
-        const res = await api.post('/products', novoProduto);
-        setProdutos(prev => [...prev, res.data]);
-        toast.success('Produto cadastrado com sucesso!');
-      }
-    } catch (error) {
-      toast.error('Erro ao salvar produto');
-      console.error(error);
-    }
-
-    setIsDialogOpen(false);
-    resetForm();
+  const handleDelete = (id: string) => {
+    setProdutoToDelete(id);
+    setIsDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
@@ -200,11 +157,55 @@ export function ProdutosPage() {
     setProdutoToDelete(null);
   };
 
+  const handleSave = async () => {
+    try {
+      if (!formData.nome || !formData.precoUnitario || !formData.categoriaId || formData.authorIds.length === 0) {
+        toast.error('Preencha todos os campos obrigatórios');
+        return;
+      }
+
+      const estoque = parseInt(formData.quantidadeEstoque) || 0;
+      const minima = parseInt(formData.quantidadeMinima) || 0;
+      const maxima = parseInt(formData.quantidadeMaxima) || 0;
+
+      const payload = {
+        name: formData.nome,
+        sku: formData.sku,
+        productType: formData.tipoProduto,
+        price: parseFloat(formData.precoUnitario),
+        unit: formData.unidadeMedida,
+        stockQty: estoque,
+        minQty: minima,
+        maxQty: maxima,
+        categoryId: formData.categoriaId,
+        authorIds: formData.authorIds,
+        publisher: formData.editora,
+        isbn: formData.isbn
+      };
+
+      if (editingProduto) {
+        const res = await api.put(`/products/${editingProduto.id}`, payload);
+        setProdutos(prev => prev.map(p => (p.id === editingProduto.id ? res.data : p)));
+        toast.success('Produto atualizado com sucesso!');
+      } else {
+        const res = await api.post('/products', payload);
+        setProdutos(prev => [...prev, res.data]);
+        toast.success('Produto criado com sucesso!');
+      }
+
+      setIsDialogOpen(false);
+      resetForm();
+
+    } catch (error) {
+      toast.error('Erro ao salvar produto');
+      console.error(error);
+    }
+  };
+
   const getCategoriaNome = (categoriaId: string) => {
     return categorias.find(c => c.id === categoriaId)?.nome || 'N/A';
   };
 
-  // RN009: Exibir múltiplos autores separados por vírgula
   const getAutoresNomes = (authorIds: string[]) => {
     if (!authorIds || authorIds.length === 0) return 'Nenhum autor';
     return authorIds
@@ -266,14 +267,27 @@ export function ProdutosPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={filterTipoProduto} onValueChange={setFilterTipoProduto}>
+          <SelectTrigger className="w-full md:w-[200px]">
+            <SelectValue placeholder="Filtrar por tipo de produto" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            <SelectItem value="Livro">Livro</SelectItem>
+            <SelectItem value="Revista">Revista</SelectItem>
+            <SelectItem value="Jornal">Jornal</SelectItem>
+            <SelectItem value="Outro">Outro</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead>SKU</TableHead>
               <TableHead>Nome</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Autor(es)</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Preço</TableHead>
@@ -285,15 +299,16 @@ export function ProdutosPage() {
           <TableBody>
             {filteredProdutos.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                   Nenhum produto encontrado
                 </TableCell>
               </TableRow>
             ) : (
               filteredProdutos.map(produto => (
                 <TableRow key={produto.id}>
-                  <TableCell>{produto.id}</TableCell>
+                  <TableCell>{produto.sku || '-'}</TableCell>
                   <TableCell>{produto.nome}</TableCell>
+                  <TableCell>{produto.tipoProduto || '-'}</TableCell>
                   <TableCell>{getAutoresNomes(produto.authorIds)}</TableCell>
                   <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
                   <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
@@ -337,6 +352,32 @@ export function ProdutosPage() {
                 value={formData.nome}
                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="sku">SKU</Label>
+                <Input
+                  id="sku"
+                  value={formData.sku}
+                  onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                  placeholder="Ex: LIV-001"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="tipoProduto">Tipo de Produto</Label>
+                <Select value={formData.tipoProduto} onValueChange={(value) => setFormData({ ...formData, tipoProduto: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Livro">Livro</SelectItem>
+                    <SelectItem value="Revista">Revista</SelectItem>
+                    <SelectItem value="Jornal">Jornal</SelectItem>
+                    <SelectItem value="Outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Seleção Múltipla de Autores */}
@@ -546,3 +587,5 @@ export function ProdutosPage() {
     </div>
   );
 }
+
+export default ProdutosPage;
