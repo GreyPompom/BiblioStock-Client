@@ -1,136 +1,156 @@
 import { useState, useEffect } from 'react';
-import { Produto, Categoria, HistoricoReajuste } from '../types';
-import { getProdutos, saveProdutos, getCategorias, saveCategorias, getHistoricoReajustes, saveHistoricoReajustes } from '../lib/storage';
+import {
+  CategoryPercentDTO,
+  PriceAdjustmentHistoryItemDTO,
+  ScopeType,
+} from '../types/priceAdjustments.dto';
+import {
+  getCategoriesPercent,
+  getPriceAdjustmentsHistory,
+  applyPriceAdjustment,
+} from '../lib/api/priceAdjustmentsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 import { Percent, TrendingUp, History } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Badge } from './ui/badge';
 
 export function ReajustesPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [historico, setHistorico] = useState<HistoricoReajuste[]>([]);
+  const [categoriasPercent, setCategoriasPercent] = useState<CategoryPercentDTO[]>([]);
+  const [historico, setHistorico] = useState<PriceAdjustmentHistoryItemDTO[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [tipoReajuste, setTipoReajuste] = useState<'global' | 'categoria' | 'padrao'>('global');
-  const [percentual, setPercentual] = useState('');
-  const [categoriaSelecionada, setCategoriaSelecionada] = useState('');
+  const [tipoReajuste, setTipoReajuste] = useState<ScopeType | 'PADRAO_UI'>('GLOBAL');
+  const [percentualInput, setPercentualInput] = useState(''); // em %
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
+  const [nota, setNota] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [cats, hist] = await Promise.all([
+        getCategoriesPercent(),
+        getPriceAdjustmentsHistory(),
+      ]);
+      // ordenar histórico por data desc
+      const sortedHist = [...hist].sort(
+        (a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
+      );
+      setCategoriasPercent(cats);
+      setHistorico(sortedHist);
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao carregar dados de reajuste.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setProdutos(getProdutos());
-    setCategorias(getCategorias());
-    setHistorico(getHistoricoReajustes().sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()));
-  };
-
-  const handleReajusteGlobal = () => {
-    if (!percentual) {
-      toast.error('Informe o percentual de reajuste');
-      return;
+  const validarReajuste = () => {
+    if (tipoReajuste === 'GLOBAL') {
+      if (!percentualInput) {
+        toast.error('Informe o percentual de reajuste global.');
+        return false;
+      }
     }
 
-    setIsDialogOpen(true);
-  };
-
-  const handleReajusteCategoria = () => {
-    if (!percentual || !categoriaSelecionada) {
-      toast.error('Informe o percentual e selecione a categoria');
-      return;
+    if (tipoReajuste === 'CATEGORIA') {
+      if (!percentualInput || !categoriaSelecionada) {
+        toast.error('Informe o percentual e selecione a categoria.');
+        return false;
+      }
     }
 
+    return true;
+  };
+
+  const handleAbrirDialog = (tipo: ScopeType) => {
+    setTipoReajuste(tipo);
+    if (!validarReajuste()) return;
     setIsDialogOpen(true);
   };
 
-  const handleReajustePadrao = () => {
-    setIsDialogOpen(true);
-  };
+  const confirmarReajuste = async () => {
+    try {
+      const percNumber = parseFloat(percentualInput.replace(',', '.')) || 0;
+      const decimalPercent = percNumber / 100; // converter 5 -> 0.05
+      let scopeType: ScopeType = 'GLOBAL';
+      let categoryId: number | undefined;
+      let noteToSend: string | undefined = nota || undefined;
 
-  const confirmarReajuste = () => {
-    const perc = parseFloat(percentual) || 0;
-    let produtosAtualizados = [...produtos];
-    let categoriasAtualizadas = [...categorias];
-    let novoHistorico: HistoricoReajuste;
+      if (tipoReajuste === 'CATEGORIA') {
+        scopeType = 'CATEGORIA';
+        categoryId = Number(categoriaSelecionada);
 
-    if (tipoReajuste === 'global') {
-      // Reajuste global - ALTERA OS PREÇOS de todos os produtos
-      produtosAtualizados = produtos.map(p => ({
-        ...p,
-        precoUnitario: p.precoUnitario * (1 + perc / 100),
-      }));
+        const categoria = categoriasPercent.find(c => c.categoryId === categoryId);
+        if (!noteToSend) {
+          noteToSend = `Atualização de percentual da categoria ${categoria?.nameCategory ?? ''} para ${percNumber}%`;
+        }
+      } else {
+        scopeType = 'GLOBAL';
+        if (!noteToSend) {
+          noteToSend = `Reajuste global de ${percNumber}%`;
+        }
+      }
 
-      novoHistorico = {
-        id: Date.now().toString(),
-        data: new Date().toISOString(),
-        percentual: perc,
-      };
-
-      saveProdutos(produtosAtualizados);
-      setProdutos(produtosAtualizados);
-      toast.success(`Reajuste global de ${perc}% aplicado a todos os produtos!`);
-    } else if (tipoReajuste === 'categoria') {
-      // Reajuste por categoria - ALTERA O PERCENTUAL PADRÃO da categoria
-      categoriasAtualizadas = categorias.map(c => 
-        c.id === categoriaSelecionada
-          ? { ...c, percentualReajustePadrao: perc }
-          : c
-      );
-
-      const categoria = categorias.find(c => c.id === categoriaSelecionada);
-      novoHistorico = {
-        id: Date.now().toString(),
-        data: new Date().toISOString(),
-        percentual: perc,
-        categoriaId: categoriaSelecionada,
-        categoriaNome: categoria?.nome,
-      };
-
-      saveCategorias(categoriasAtualizadas);
-      setCategorias(categoriasAtualizadas);
-      toast.success(`Percentual de reajuste da categoria "${categoria?.nome}" atualizado para ${perc}%!`);
-    } else {
-      // Reajuste padrão - ALTERA OS PREÇOS aplicando o percentual de cada categoria
-      produtosAtualizados = produtos.map(p => {
-        const categoria = categorias.find(c => c.id === p.categoriaId);
-        const percCategoria = categoria?.percentualReajustePadrao || 0;
-        return {
-          ...p,
-          precoUnitario: p.precoUnitario * (1 + percCategoria / 100),
-        };
+      await applyPriceAdjustment({
+        scopeType,
+        percent: decimalPercent,
+        categoryId,
+        note: noteToSend,
       });
 
-      novoHistorico = {
-        id: Date.now().toString(),
-        data: new Date().toISOString(),
-        percentual: 0, // Múltiplos percentuais
-      };
+      toast.success(
+        scopeType === 'GLOBAL'
+          ? `Reajuste global de ${percNumber}% enviado com sucesso!`
+          : `Reajuste da categoria aplicado com sucesso!`,
+      );
 
-      saveProdutos(produtosAtualizados);
-      setProdutos(produtosAtualizados);
-      toast.success('Reajuste padrão aplicado conforme percentual de cada categoria!');
+      // recarregar histórico e percentuais
+      await loadData();
+
+      // resetar estado
+      setIsDialogOpen(false);
+      setPercentualInput('');
+      setCategoriaSelecionada('');
+      setNota('');
+      setTipoReajuste('GLOBAL');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao aplicar reajuste. Verifique os dados e tente novamente.');
     }
+  };
 
-    const novoHist = [novoHistorico, ...historico];
-    saveHistoricoReajustes(novoHist);
-    setHistorico(novoHist);
-
-    setIsDialogOpen(false);
-    setPercentual('');
-    setCategoriaSelecionada('');
+  const formatPercentDecimalToView = (decimal: number) => {
+    // backend manda 0.05 -> exibir "5"
+    return (decimal * 100).toFixed(2).replace('.', ',');
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h2>Reajuste de Preços</h2>
-        <p className="text-muted-foreground">Ajuste os preços dos produtos de forma global ou por categoria</p>
+        <p className="text-muted-foreground">
+          Ajuste os preços dos produtos de forma global ou por categoria, integrado com a API.
+        </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -151,14 +171,26 @@ export function ReajustesPage() {
                 type="number"
                 step="0.01"
                 placeholder="Ex: 10"
-                value={tipoReajuste === 'global' ? percentual : ''}
-                onChange={(e) => {
-                  setTipoReajuste('global');
-                  setPercentual(e.target.value);
+                value={tipoReajuste === 'GLOBAL' ? percentualInput : ''}
+                onChange={e => {
+                  setTipoReajuste('GLOBAL');
+                  setPercentualInput(e.target.value);
                 }}
               />
             </div>
-            <Button className="w-full" onClick={handleReajusteGlobal}>
+            <div className="space-y-2">
+              <Label htmlFor="nota-global">Observação (opcional)</Label>
+              <Input
+                id="nota-global"
+                placeholder="Ex: Reajuste global trimestral"
+                value={tipoReajuste === 'GLOBAL' ? nota : ''}
+                onChange={e => {
+                  setTipoReajuste('GLOBAL');
+                  setNota(e.target.value);
+                }}
+              />
+            </div>
+            <Button className="w-full" onClick={() => handleAbrirDialog('GLOBAL')} disabled={isLoading}>
               Aplicar Reajuste Global
             </Button>
           </CardContent>
@@ -169,17 +201,19 @@ export function ReajustesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="size-5" />
-              Configurar Percentual
+              Configurar Percentual da Categoria
             </CardTitle>
-            <CardDescription>Definir o percentual padrão de uma categoria</CardDescription>
+            <CardDescription>
+              Definir o percentual padrão de uma categoria (o backend aplica sobre os preços).
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="categoria">Categoria</Label>
-              <Select 
-                value={tipoReajuste === 'categoria' ? categoriaSelecionada : ''} 
-                onValueChange={(value) => {
-                  setTipoReajuste('categoria');
+              <Select
+                value={tipoReajuste === 'CATEGORIA' ? categoriaSelecionada : ''}
+                onValueChange={(value: string) => {
+                  setTipoReajuste('CATEGORIA');
                   setCategoriaSelecionada(value);
                 }}
               >
@@ -187,9 +221,9 @@ export function ReajustesPage() {
                   <SelectValue placeholder="Selecione a categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categorias.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.nome} (atual: {cat.percentualReajustePadrao}%)
+                  {categoriasPercent.map(cat => (
+                    <SelectItem key={cat.categoryId} value={String(cat.categoryId)}>
+                      {cat.nameCategory} (atual: {formatPercentDecimalToView(cat.percent)}%)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -202,49 +236,63 @@ export function ReajustesPage() {
                 type="number"
                 step="0.01"
                 placeholder="Ex: 5"
-                value={tipoReajuste === 'categoria' ? percentual : ''}
-                onChange={(e) => {
-                  setTipoReajuste('categoria');
-                  setPercentual(e.target.value);
+                value={tipoReajuste === 'CATEGORIA' ? percentualInput : ''}
+                onChange={e => {
+                  setTipoReajuste('CATEGORIA');
+                  setPercentualInput(e.target.value);
                 }}
               />
             </div>
-            <Button className="w-full" onClick={handleReajusteCategoria}>
-              Atualizar Percentual
+            <div className="space-y-2">
+              <Label htmlFor="nota-categoria">Observação (opcional)</Label>
+              <Input
+                id="nota-categoria"
+                placeholder="Ex: Ajuste de percentual da categoria"
+                value={tipoReajuste === 'CATEGORIA' ? nota : ''}
+                onChange={e => {
+                  setTipoReajuste('CATEGORIA');
+                  setNota(e.target.value);
+                }}
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => handleAbrirDialog('CATEGORIA')}
+              disabled={isLoading || !categoriasPercent.length}
+            >
+              Atualizar Percentual da Categoria
             </Button>
           </CardContent>
         </Card>
 
-        {/* Reajuste Padrão */}
+        {/* Painel de Percentuais por Categoria (apenas visualização) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <History className="size-5" />
-              Reajuste Padrão
+              Percentuais por Categoria
             </CardTitle>
-            <CardDescription>Aplicar percentual padrão de cada categoria</CardDescription>
+            <CardDescription>
+              Visualize os percentuais atuais de cada categoria conforme registrados na API.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm">Percentuais configurados:</p>
+            {categoriasPercent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhum percentual de categoria configurado.
+              </p>
+            ) : (
               <div className="space-y-1">
-                {categorias.map(cat => (
-                  <div key={cat.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{cat.nome}</span>
-                    <Badge variant="secondary">{cat.percentualReajustePadrao}%</Badge>
+                {categoriasPercent.map(cat => (
+                  <div key={cat.categoryId} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">{cat.nameCategory}</span>
+                    <Badge variant="secondary">
+                      {formatPercentDecimalToView(cat.percent)}%
+                    </Badge>
                   </div>
                 ))}
               </div>
-            </div>
-            <Button 
-              className="w-full" 
-              onClick={() => {
-                setTipoReajuste('padrao');
-                handleReajustePadrao();
-              }}
-            >
-              Aplicar Reajuste Padrão
-            </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -253,7 +301,7 @@ export function ReajustesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Histórico de Reajustes</CardTitle>
-          <CardDescription>Registro de todos os reajustes aplicados</CardDescription>
+          <CardDescription>Registro de todos os reajustes aplicados (API /history)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -264,12 +312,13 @@ export function ReajustesPage() {
                   <TableHead>Tipo</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Percentual</TableHead>
+                  <TableHead>Observação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {historico.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                       Nenhum reajuste registrado
                     </TableCell>
                   </TableRow>
@@ -277,7 +326,7 @@ export function ReajustesPage() {
                   historico.map(item => (
                     <TableRow key={item.id}>
                       <TableCell>
-                        {new Date(item.data).toLocaleDateString('pt-BR', {
+                        {new Date(item.appliedAt).toLocaleString('pt-BR', {
                           day: '2-digit',
                           month: '2-digit',
                           year: 'numeric',
@@ -286,17 +335,16 @@ export function ReajustesPage() {
                         })}
                       </TableCell>
                       <TableCell>
-                        {item.categoriaId ? (
+                        {item.scopeType === 'CATEGORIA' ? (
                           <Badge variant="secondary">Por Categoria</Badge>
-                        ) : item.percentual === 0 ? (
-                          <Badge>Padrão</Badge>
                         ) : (
                           <Badge>Global</Badge>
                         )}
                       </TableCell>
-                      <TableCell>{item.categoriaNome || 'Todas'}</TableCell>
-                      <TableCell>
-                        {item.percentual === 0 ? 'Variável' : `${item.percentual}%`}
+                      <TableCell>{item.category?.name ?? 'Todas'}</TableCell>
+                      <TableCell>{formatPercentDecimalToView(item.percent)}%</TableCell>
+                      <TableCell className="max-w-[240px] truncate" title={item.note}>
+                        {item.note ?? '-'}
                       </TableCell>
                     </TableRow>
                   ))
@@ -307,28 +355,45 @@ export function ReajustesPage() {
         </CardContent>
       </Card>
 
+      {/* Dialog de confirmação */}
       <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {tipoReajuste === 'categoria' ? 'Confirmar Atualização de Percentual' : 'Confirmar Reajuste de Preços'}
+              {tipoReajuste === 'CATEGORIA'
+                ? 'Confirmar Atualização de Percentual da Categoria'
+                : 'Confirmar Reajuste Global'}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {tipoReajuste === 'global' && (
-                <>Você está prestes a aplicar um reajuste de <strong>{percentual}%</strong> aos preços de todos os produtos. Esta ação não pode ser desfeita.</>
+              {tipoReajuste === 'GLOBAL' && (
+                <>
+                  Você está prestes a aplicar um reajuste de{' '}
+                  <strong>{percentualInput}%</strong> aos preços de todos os produtos. Essa
+                  operação será processada pela API e não pode ser desfeita.
+                </>
               )}
-              {tipoReajuste === 'categoria' && (
-                <>Você está prestes a atualizar o percentual padrão da categoria <strong>{categorias.find(c => c.id === categoriaSelecionada)?.nome}</strong> para <strong>{percentual}%</strong>. Isso não altera os preços atuais dos produtos, apenas define o percentual que será usado em reajustes futuros.</>
-              )}
-              {tipoReajuste === 'padrao' && (
-                <>Você está prestes a aplicar o reajuste padrão aos preços dos produtos conforme o percentual configurado para cada categoria. Esta ação não pode ser desfeita.</>
+              {tipoReajuste === 'CATEGORIA' && (
+                <>
+                  Você está prestes a atualizar o percentual da categoria{' '}
+                  <strong>
+                    {
+                      categoriasPercent.find(
+                        c => String(c.categoryId) === categoriaSelecionada,
+                      )?.nameCategory
+                    }
+                  </strong>{' '}
+                  para <strong>{percentualInput}%</strong>. O backend é responsável por aplicar
+                  esse percentual sobre os preços da categoria.
+                </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmarReajuste}>
-              {tipoReajuste === 'categoria' ? 'Confirmar Atualização' : 'Confirmar Reajuste'}
+            <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarReajuste} disabled={isLoading}>
+              {tipoReajuste === 'CATEGORIA'
+                ? 'Confirmar Atualização'
+                : 'Confirmar Reajuste'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

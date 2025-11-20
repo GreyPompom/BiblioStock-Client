@@ -1,76 +1,110 @@
+// src/components/AutoresPage.tsx
 import { useState, useEffect } from 'react';
-import { Autor } from '../types';
-import { getAutores, saveAutores, getProdutos } from '../lib/storage';
+import { getProdutos } from '../lib/storage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 import { Textarea } from './ui/textarea';
 import { Plus, Pencil, Trash2, Search, BookOpen } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import type { AuthorRequestDTO, AuthorResponseDTO, AutorFormData } from '../types/authors.dto';
+import { getAuthors, createAuthor, updateAuthor, deleteAuthor } from '../lib/api/authorsApi';
+
+
+const mapFormToRequestDto = (form: AutorFormData): AuthorRequestDTO => ({
+  fullName: form.nomeCompleto,
+  nationality: form.nacionalidade,
+  biography: form.biografia || null,
+  birthDate: form.dataNascimento || null,
+});
 
 export function AutoresPage() {
-  const [autores, setAutores] = useState<Autor[]>([]);
-  const [filteredAutores, setFilteredAutores] = useState<Autor[]>([]);
+  const [autores, setAutores] = useState<AuthorResponseDTO[]>([]);
+  const [filteredAutores, setFilteredAutores] = useState<AuthorResponseDTO[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
-  const [autorToDelete, setAutorToDelete] = useState<string | null>(null);
-  const [editingAutor, setEditingAutor] = useState<Autor | null>(null);
-  const [detailsAutor, setDetailsAutor] = useState<Autor | null>(null);
+  const [autorToDelete, setAutorToDelete] = useState<number | null>(null);
+  const [editingAutor, setEditingAutor] = useState<AuthorResponseDTO | null>(null);
+  const [detailsAutor, setDetailsAutor] = useState<AuthorResponseDTO | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  const [formData, setFormData] = useState({
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [formData, setFormData] = useState<AutorFormData>({
     nomeCompleto: '',
     nacionalidade: '',
     biografia: '',
+    dataNascimento: '',
   });
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const apiAutores = await getAuthors();
+      setAutores(apiAutores);
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao carregar autores do servidor.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
   }, []);
 
   useEffect(() => {
-    filterAutores();
-  }, [autores, searchTerm]);
-
-  const loadData = () => {
-    setAutores(getAutores());
-  };
-
-  const filterAutores = () => {
     let filtered = [...autores];
-
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(a => 
-        a.nomeCompleto.toLowerCase().includes(term) ||
-        a.nacionalidade.toLowerCase().includes(term)
+      filtered = filtered.filter(
+        a =>
+          a.fullName.toLowerCase().includes(term) ||
+          a.nationality.toLowerCase().includes(term),
       );
     }
-
     setFilteredAutores(filtered);
-  };
+  }, [autores, searchTerm]);
 
   const resetForm = () => {
     setFormData({
       nomeCompleto: '',
       nacionalidade: '',
       biografia: '',
+      dataNascimento: '',
     });
     setEditingAutor(null);
   };
 
-  const handleOpenDialog = (autor?: Autor) => {
+  const handleOpenDialog = (autor?: AuthorResponseDTO) => {
     if (autor) {
       setEditingAutor(autor);
       setFormData({
-        nomeCompleto: autor.nomeCompleto,
-        nacionalidade: autor.nacionalidade,
-        biografia: autor.biografia,
+        nomeCompleto: autor.fullName,
+        nacionalidade: autor.nationality,
+        biografia: autor.biography ?? '',
+        dataNascimento: autor.birthDate ?? '',
       });
     } else {
       resetForm();
@@ -78,40 +112,51 @@ export function AutoresPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.nomeCompleto || !formData.nacionalidade) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
     }
 
-    const novoAutor: Autor = {
-      id: editingAutor?.id || Date.now().toString(),
-      nomeCompleto: formData.nomeCompleto,
-      nacionalidade: formData.nacionalidade,
-      biografia: formData.biografia,
-      dataCadastro: editingAutor?.dataCadastro || new Date().toISOString(),
-    };
+    const payload: AuthorRequestDTO = mapFormToRequestDto(formData);
 
-    const updatedAutores = editingAutor
-      ? autores.map(a => a.id === editingAutor.id ? novoAutor : a)
-      : [...autores, novoAutor];
+    try {
+      setIsLoading(true);
 
-    saveAutores(updatedAutores);
-    setAutores(updatedAutores);
-    setIsDialogOpen(false);
-    resetForm();
-    toast.success(editingAutor ? 'Autor atualizado com sucesso!' : 'Autor cadastrado com sucesso!');
+      if (editingAutor) {
+        const updatedDto = await updateAuthor(editingAutor.id, payload);
+        setAutores(prev =>
+          prev.map(a => (a.id === editingAutor.id ? updatedDto : a)),
+        );
+        toast.success('Autor atualizado com sucesso!');
+      } else {
+        const createdDto = await createAuthor(payload);
+        setAutores(prev => [...prev, createdDto]);
+        toast.success('Autor cadastrado com sucesso!');
+      }
+
+      setIsDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao salvar autor. Verifique os dados e tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    // RN008 e RF016: Verificar se o autor está vinculado a algum livro
-    const produtos = getProdutos();
-    const livrosVinculados = produtos.filter(p => p.authorIds.includes(id));
-    
+  const getLivrosDoAutor = (autorId: number) => {
+    const produtos = getProdutos(); // ainda vindo do storage
+    return produtos.filter(p => p.authorIds.includes(String(autorId)));
+  };
+
+  const handleDelete = (id: number) => {
+    const livrosVinculados = getLivrosDoAutor(id);
+
     if (livrosVinculados.length > 0) {
       toast.error(
         `Não é possível excluir este autor pois está vinculado a ${livrosVinculados.length} livro(s).`,
-        { duration: 4000 }
+        { duration: 4000 },
       );
       return;
     }
@@ -120,25 +165,29 @@ export function AutoresPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (autorToDelete) {
-      const updatedAutores = autores.filter(a => a.id !== autorToDelete);
-      saveAutores(updatedAutores);
-      setAutores(updatedAutores);
+  const confirmDelete = async () => {
+    if (autorToDelete == null) return;
+
+    try {
+      setIsLoading(true);
+      await deleteAuthor(autorToDelete);
+      setAutores(prev => prev.filter(a => a.id !== autorToDelete));
       toast.success('Autor excluído com sucesso!');
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        'Erro ao excluir autor. Verifique se ele não está vinculado a livros ou tente novamente.',
+      );
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setAutorToDelete(null);
+      setIsLoading(false);
     }
-    setIsDeleteDialogOpen(false);
-    setAutorToDelete(null);
   };
 
-  const handleViewDetails = (autor: Autor) => {
+  const handleViewDetails = (autor: AuthorResponseDTO) => {
     setDetailsAutor(autor);
     setIsDetailsDialogOpen(true);
-  };
-
-  const getLivrosDoAutor = (autorId: string) => {
-    const produtos = getProdutos();
-    return produtos.filter(p => p.authorIds.includes(autorId));
   };
 
   return (
@@ -146,9 +195,11 @@ export function AutoresPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2>Gerenciamento de Autores</h2>
-          <p className="text-muted-foreground">Cadastre e gerencie os autores dos livros da livraria</p>
+          <p className="text-muted-foreground">
+            Cadastre e gerencie os autores dos livros da livraria
+          </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
+        <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isLoading}>
           <Plus className="size-4" />
           Novo Autor
         </Button>
@@ -160,7 +211,7 @@ export function AutoresPage() {
           <Input
             placeholder="Buscar por nome ou nacionalidade..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -174,7 +225,7 @@ export function AutoresPage() {
               <TableHead>Nome Completo</TableHead>
               <TableHead>Nacionalidade</TableHead>
               <TableHead>Livros Vinculados</TableHead>
-              <TableHead>Data de Cadastro</TableHead>
+              <TableHead>Data de Aniversário</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -192,14 +243,14 @@ export function AutoresPage() {
                   <TableRow key={autor.id}>
                     <TableCell>{autor.id}</TableCell>
                     <TableCell>
-                      <button 
+                      <button
                         onClick={() => handleViewDetails(autor)}
                         className="hover:underline"
                       >
-                        {autor.nomeCompleto}
+                        {autor.fullName}
                       </button>
                     </TableCell>
-                    <TableCell>{autor.nacionalidade}</TableCell>
+                    <TableCell>{autor.nationality}</TableCell>
                     <TableCell>
                       {livrosVinculados.length > 0 ? (
                         <Badge variant="secondary" className="gap-1">
@@ -211,14 +262,25 @@ export function AutoresPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {new Date(autor.dataCadastro).toLocaleDateString('pt-BR')}
+                      {
+                        autor.birthDate ? new Date(autor.birthDate).toLocaleDateString('pt-BR') : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(autor)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenDialog(autor)}
+                          disabled={isLoading}
+                        >
                           <Pencil className="size-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(autor.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(autor.id)}
+                          disabled={isLoading}
+                        >
                           <Trash2 className="size-4 text-destructive" />
                         </Button>
                       </div>
@@ -236,9 +298,7 @@ export function AutoresPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>{editingAutor ? 'Editar Autor' : 'Novo Autor'}</DialogTitle>
-            <DialogDescription>
-              Preencha as informações do autor abaixo
-            </DialogDescription>
+            <DialogDescription>Preencha as informações do autor abaixo</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -246,7 +306,9 @@ export function AutoresPage() {
               <Input
                 id="nomeCompleto"
                 value={formData.nomeCompleto}
-                onChange={(e) => setFormData({ ...formData, nomeCompleto: e.target.value })}
+                onChange={e =>
+                  setFormData({ ...formData, nomeCompleto: e.target.value })
+                }
                 placeholder="Ex: Machado de Assis"
               />
             </div>
@@ -255,16 +317,25 @@ export function AutoresPage() {
               <Input
                 id="nacionalidade"
                 value={formData.nacionalidade}
-                onChange={(e) => setFormData({ ...formData, nacionalidade: e.target.value })}
+                onChange={e =>
+                  setFormData({ ...formData, nacionalidade: e.target.value })
+                }
                 placeholder="Ex: Brasileira"
               />
             </div>
+            <div className="grid gap-2"> 
+              <Label htmlFor="dataNascimento">Data de Nascimento *</Label> 
+              <Input id="dataNascimento" type="date" value={formData.dataNascimento} 
+              onChange={e => setFormData({ ...formData, dataNascimento: e.target.value })} 
+              placeholder="Ex: 2005-09-15" /> </div>
             <div className="grid gap-2">
               <Label htmlFor="biografia">Biografia</Label>
               <Textarea
                 id="biografia"
                 value={formData.biografia}
-                onChange={(e) => setFormData({ ...formData, biografia: e.target.value })}
+                onChange={e =>
+                  setFormData({ ...formData, biografia: e.target.value })
+                }
                 placeholder="Breve biografia do autor..."
                 rows={4}
               />
@@ -274,7 +345,7 @@ export function AutoresPage() {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
+            <Button onClick={handleSave} disabled={isLoading}>
               Salvar
             </Button>
           </DialogFooter>
@@ -291,21 +362,23 @@ export function AutoresPage() {
             <div className="space-y-4">
               <div>
                 <Label className="text-muted-foreground">Nome Completo</Label>
-                <p>{detailsAutor.nomeCompleto}</p>
+                <p>{detailsAutor.fullName}</p>
               </div>
               <div>
                 <Label className="text-muted-foreground">Nacionalidade</Label>
-                <p>{detailsAutor.nacionalidade}</p>
+                <p>{detailsAutor.nationality}</p>
               </div>
-              {detailsAutor.biografia && (
+              {detailsAutor.biography && (
                 <div>
                   <Label className="text-muted-foreground">Biografia</Label>
-                  <p className="whitespace-pre-wrap">{detailsAutor.biografia}</p>
+                  <p className="whitespace-pre-wrap">{detailsAutor.biography}</p>
                 </div>
               )}
               <div>
                 <Label className="text-muted-foreground">Data de Cadastro</Label>
-                <p>{new Date(detailsAutor.dataCadastro).toLocaleDateString('pt-BR')}</p>
+                <p>
+                  {detailsAutor.birthDate ? new Date(detailsAutor.birthDate).toLocaleDateString('pt-BR') : 'N/A'}
+                </p>
               </div>
               <div>
                 <Label className="text-muted-foreground">Livros Publicados</Label>
@@ -325,9 +398,7 @@ export function AutoresPage() {
             </div>
           )}
           <DialogFooter>
-            <Button onClick={() => setIsDetailsDialogOpen(false)}>
-              Fechar
-            </Button>
+            <Button onClick={() => setIsDetailsDialogOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

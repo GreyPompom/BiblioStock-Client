@@ -1,82 +1,135 @@
-import { useState, useEffect } from 'react';
-import { Produto, Categoria, Movimentacao, Autor } from '../types';
-import { getProdutos, getCategorias, getMovimentacoes, getAutores } from '../lib/storage';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { useEffect, useState } from 'react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from './ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
-import { FileText, Download, TrendingUp, TrendingDown, AlertTriangle, Package } from 'lucide-react';
+import {
+  FileText,
+  Download,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  Package,
+} from 'lucide-react';
 import { Badge } from './ui/badge';
+import { Alert, AlertDescription } from './ui/alert';
+import { toast } from 'sonner';
+
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-export function RelatoriosPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>([]);
-  const [autores, setAutores] = useState<Autor[]>([]);
+import {
+  fetchProductPricesReport,
+  fetchBalanceReport,
+  fetchProductsBelowMinimum,
+  fetchProductsPerCategory,
+  fetchMovementsHistoryReport,
+} from '../lib/api/reportsApi';
 
+import type {
+  ProductPriceDTO,
+  BalanceResponseDTO,
+  ProductBelowMinimumDTO,
+  ProductsPerCategoryDTO,
+  MovementsHistoryReportDTO,
+  MovementHistoryItemDTO,
+} from '../types/reports.dto';
+
+export function RelatoriosPage() {
+  const [productPrices, setProductPrices] = useState<ProductPriceDTO[]>([]);
+  const [balance, setBalance] = useState<BalanceResponseDTO | null>(null);
+  const [productsBelowMinimum, setProductsBelowMinimum] = useState<ProductBelowMinimumDTO[]>([]);
+  const [productsPerCategory, setProductsPerCategory] = useState<ProductsPerCategoryDTO[]>([]);
+  const [movementsReport, setMovementsReport] = useState<MovementsHistoryReportDTO | null>(null);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setProdutos(getProdutos());
-    setCategorias(getCategorias());
-    setMovimentacoes(getMovimentacoes());
-    setAutores(getAutores());
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setLoadError(null);
+
+      const [
+        prices,
+        balanceResponse,
+        belowMinimum,
+        perCategory,
+        movementsHistory,
+      ] = await Promise.all([
+        fetchProductPricesReport(),
+        fetchBalanceReport(),
+        fetchProductsBelowMinimum(),
+        fetchProductsPerCategory(),
+        fetchMovementsHistoryReport(),
+      ]);
+
+      setProductPrices(
+        [...prices].sort((a, b) => a.productName.localeCompare(b.productName)),
+      );
+      setBalance(balanceResponse);
+      setProductsBelowMinimum(belowMinimum);
+      setProductsPerCategory(perCategory);
+      setMovementsReport(movementsHistory);
+    } catch (error) {
+      console.error('Erro ao carregar relatórios:', error);
+      setLoadError('Não foi possível carregar os relatórios.');
+      toast.error('Erro ao carregar relatórios.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Relatório: Lista de Preços
-  const listaPrecos = [...produtos].sort((a, b) => a.nome.localeCompare(b.nome));
+  // --- Derivações dos dados (equivalentes ao que você fazia antes) ---
 
-  // Calcular preço com reajuste da categoria
-  const calcularPrecoComReajuste = (produto: Produto) => {
-    const categoria = categorias.find(c => c.id === produto.categoriaId);
-    const percentual = categoria?.percentualReajustePadrao || 0;
-    return produto.precoUnitario * (1 + percentual / 100);
-  };
+  // Lista de preços já vem pronta (productPrices)
 
-  // Relatório: Balanço Físico/Financeiro
-  const balancoFisico = [...produtos]
-    .sort((a, b) => a.nome.localeCompare(b.nome))
-    .map(p => ({
-      ...p,
-      valorTotal: p.quantidadeEstoque * p.precoUnitario,
-    }));
-  
-  const valorTotalEstoque = balancoFisico.reduce((sum, p) => sum + p.valorTotal, 0);
+  // Balanço físico/financeiro
+  const balanceItems = balance?.items ?? [];
+  const totalInventoryValue = balance?.totalValue ?? 0;
 
-  // Relatório: Produtos Abaixo da Quantidade Mínima
-  const produtosAbaixoMinimo = produtos.filter(p => p.quantidadeEstoque < p.quantidadeMinima);
+  // Produtos abaixo do mínimo
+  const produtosAbaixoMinimo = productsBelowMinimum;
 
-  // Relatório: Quantidade de Produtos por Categoria
-  const produtosPorCategoria = categorias.map(cat => ({
-    categoria: cat.nome,
-    quantidade: produtos.filter(p => p.categoriaId === cat.id).length,
+  // Produtos por categoria
+  const produtosPorCategoria = productsPerCategory.map(item => ({
+    categoria: item.name,
+    quantidade: item.productCount,
   }));
 
-  // Relatório: Produtos com Maior Movimento
-  const movimentoPorProduto = produtos.map(produto => {
-    const movs = movimentacoes.filter(m => m.produtoId === produto.id);
-    const entradas = movs.filter(m => m.tipo === 'Entrada').reduce((sum, m) => sum + m.quantidade, 0);
-    const saidas = movs.filter(m => m.tipo === 'Saída').reduce((sum, m) => sum + m.quantidade, 0);
-    return { produto: produto.nome, entradas, saidas };
-  });
+  // Movimento por produto (já vem da API)
+  const movimentoPorProduto: MovementHistoryItemDTO[] =
+    movementsReport?.movements ?? [];
 
-  const produtoMaisEntradas = movimentoPorProduto.reduce((max, p) => p.entradas > max.entradas ? p : max, movimentoPorProduto[0] || { produto: '-', entradas: 0, saidas: 0 });
-  const produtoMaisSaidas = movimentoPorProduto.reduce((max, p) => p.saidas > max.saidas ? p : max, movimentoPorProduto[0] || { produto: '-', entradas: 0, saidas: 0 });
+  const produtoMaisEntradas =
+    movimentoPorProduto.length > 0
+      ? movimentoPorProduto.reduce((max, item) =>
+        item.entries > max.entries ? item : max,
+      )
+      : { productName: '-', entries: 0, exits: 0, saldo: 0 };
 
-  const getCategoriaNome = (categoriaId: string) => {
-    return categorias.find(c => c.id === categoriaId)?.nome || 'N/A';
-  };
-
-  const getAutoresNomes = (authorIds: string[]) => {
-    if (!authorIds || authorIds.length === 0) return 'Sem autores';
-    return authorIds
-      .map(id => autores.find(a => a.id === id)?.nomeCompleto || 'Desconhecido')
-      .join(', ');
-  };
+  const produtoMaisSaidas =
+    movimentoPorProduto.length > 0
+      ? movimentoPorProduto.reduce((max, item) =>
+        item.exits > max.exits ? item : max,
+      )
+      : { productName: '-', entries: 0, exits: 0, saldo: 0 };
 
   const exportarPDF = (relatorio: string) => {
     const doc = new jsPDF();
@@ -87,70 +140,82 @@ export function RelatoriosPage() {
       case 'Lista de Preços':
         autoTable(doc, {
           startY: 20,
-          head: [['ID', 'Nome', 'Autor', 'Editora', 'Categoria', 'ISBN', 'Preço Unitário', 'Preço c/ Reajuste']],
-          body: listaPrecos.map(produto => [
-            produto.id,
-            produto.nome,
-            getAutoresNomes(produto.authorIds),
-            produto.editora,
-            getCategoriaNome(produto.categoriaId),
-            produto.isbn,
-            `R$ ${produto.precoUnitario.toFixed(2)}`,
-            `R$ ${calcularPrecoComReajuste(produto).toFixed(2)}`,
+          head: [['ID', 'Nome', 'ISBN', 'Preço Unitário', 'Preço c/ Reajuste']],
+          body: productPrices.map(item => [
+            item.productId,
+            item.productName,
+            item.ISBN,
+            `R$ ${Number(item.priceUnit).toFixed(2)}`,
+            `R$ ${Number(item.priceWithPercent).toFixed(2)}`,
           ]),
         });
         break;
+
       case 'Balanço':
         doc.setFontSize(14);
-        doc.text(`Valor Total do Estoque: R$ ${valorTotalEstoque.toFixed(2)}`, 10, 20);
+        doc.text(
+          `Valor Total do Estoque: R$ ${Number(totalInventoryValue).toFixed(2)}`,
+          10,
+          20,
+        );
         autoTable(doc, {
           startY: 30,
-          head: [['Nome', 'Categoria', 'Qtd. Estoque', 'Valor Unit.', 'Valor Total']],
-          body: balancoFisico.map(produto => [
-            produto.nome,
-            getCategoriaNome(produto.categoriaId),
-            produto.quantidadeEstoque,
-            `R$ ${produto.precoUnitario.toFixed(2)}`,
-            `R$ ${produto.valorTotal.toFixed(2)}`,
+          head: [['Nome', 'Qtd. Estoque', 'Valor Unit.', 'Valor Total']],
+          body: balanceItems.map(item => [
+            item.name,
+            item.stockQty,
+            `R$ ${Number(item.price).toFixed(2)}`,
+            `R$ ${Number(item.totalValue).toFixed(2)}`,
           ]),
         });
         break;
+
       case 'Estoque Baixo':
         autoTable(doc, {
           startY: 20,
           head: [['ID', 'Nome', 'Qtd. Mínima', 'Qtd. Atual', 'Diferença', 'Status']],
-          body: produtosAbaixoMinimo.map(produto => [
-            produto.id,
-            produto.nome,
-            produto.quantidadeMinima,
-            produto.quantidadeEstoque,
-            produto.quantidadeMinima - produto.quantidadeEstoque,
-            'Crítico',
-          ]),
+          body: produtosAbaixoMinimo.map(item => {
+            const diff = item.minQTD - item.stockQTD;
+            return [
+              item.productId,
+              item.productName,
+              item.minQTD,
+              item.stockQTD,
+              diff,
+              'Crítico',
+            ];
+          }),
         });
         break;
+
       case 'Por Categoria':
         autoTable(doc, {
           startY: 20,
           head: [['Categoria', 'Quantidade de Produtos']],
-          body: produtosPorCategoria.map((item, index) => [
-            item.categoria,
-            item.quantidade,
-          ]),
+          body: produtosPorCategoria.map(item => [item.categoria, item.quantidade]),
         });
         break;
+
       case 'Movimento':
         doc.setFontSize(14);
-        doc.text(`Maior Número de Entradas: ${produtoMaisEntradas.produto} (${produtoMaisEntradas.entradas} unidades)`, 10, 20);
-        doc.text(`Maior Número de Saídas: ${produtoMaisSaidas.produto} (${produtoMaisSaidas.saidas} unidades)`, 10, 30);
+        doc.text(
+          `Maior Número de Entradas: ${produtoMaisEntradas.productName} (${produtoMaisEntradas.entries} unidades)`,
+          10,
+          20,
+        );
+        doc.text(
+          `Maior Número de Saídas: ${produtoMaisSaidas.productName} (${produtoMaisSaidas.exits} unidades)`,
+          10,
+          30,
+        );
         autoTable(doc, {
           startY: 40,
           head: [['Produto', 'Total de Entradas', 'Total de Saídas', 'Saldo']],
-          body: movimentoPorProduto.map((item, index) => [
-            item.produto,
-            `+${item.entradas}`,
-            `-${item.saidas}`,
-            item.entradas - item.saidas,
+          body: movimentoPorProduto.map(item => [
+            item.productName,
+            `+${item.entries}`,
+            `-${item.exits}`,
+            item.saldo,
           ]),
         });
         break;
@@ -167,7 +232,18 @@ export function RelatoriosPage() {
         <h2>Relatórios Gerenciais</h2>
         <p className="text-muted-foreground">Consulte informações detalhadas sobre estoque e movimentações</p>
       </div>
+      <div>{isLoading && (
+        <p className="text-sm text-muted-foreground">
+          Carregando relatórios...
+        </p>
+      )}
 
+        {loadError && (
+          <Alert variant="destructive">
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        )}
+      </div>
       <Tabs defaultValue="lista-precos" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="lista-precos">Lista de Preços</TabsTrigger>
@@ -202,25 +278,19 @@ export function RelatoriosPage() {
                     <TableRow>
                       <TableHead>ID</TableHead>
                       <TableHead>Nome</TableHead>
-                      <TableHead>Autor</TableHead>
-                      <TableHead>Editora</TableHead>
-                      <TableHead>Categoria</TableHead>
                       <TableHead>ISBN</TableHead>
                       <TableHead>Preço Unitário</TableHead>
                       <TableHead>Preço c/ Reajuste</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {listaPrecos.map(produto => (
-                      <TableRow key={produto.id}>
-                        <TableCell>{produto.id}</TableCell>
-                        <TableCell>{produto.nome}</TableCell>
-                        <TableCell>{getAutoresNomes(produto.authorIds)}</TableCell>
-                        <TableCell>{produto.editora}</TableCell>
-                        <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
-                        <TableCell>{produto.isbn}</TableCell>
-                        <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
-                        <TableCell>R$ {calcularPrecoComReajuste(produto).toFixed(2)}</TableCell>
+                    {productPrices.map(produto => (
+                      <TableRow key={produto.productId}>
+                        <TableCell>{produto.productId}</TableCell>
+                        <TableCell>{produto.productName}</TableCell>
+                        <TableCell>{produto.ISBN}</TableCell>
+                        <TableCell>R$ {produto.priceUnit.toFixed(2)}</TableCell>
+                        <TableCell>R$ {produto.priceWithPercent.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -251,33 +321,31 @@ export function RelatoriosPage() {
             <CardContent className="space-y-4">
               <div className="rounded-lg bg-muted p-4">
                 <p className="text-muted-foreground">Valor Total do Estoque</p>
-                <p className="text-2xl">R$ {valorTotalEstoque.toFixed(2)}</p>
+                <p className="text-2xl">R$ {Number(totalInventoryValue).toFixed(2)}</p>
               </div>
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nome</TableHead>
-                      <TableHead>Categoria</TableHead>
                       <TableHead>Qtd. Estoque</TableHead>
                       <TableHead>Valor Unit.</TableHead>
                       <TableHead>Valor Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {balancoFisico.map(produto => (
+                    {balanceItems.map(produto => (
                       <TableRow key={produto.id}>
-                        <TableCell>{produto.nome}</TableCell>
-                        <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
-                        <TableCell>{produto.quantidadeEstoque}</TableCell>
-                        <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
-                        <TableCell>R$ {produto.valorTotal.toFixed(2)}</TableCell>
+                        <TableCell>{produto.name}</TableCell>
+                        <TableCell>{produto.stockQty}</TableCell>
+                        <TableCell>R$ {produto.price.toFixed(2)}</TableCell>
+                        <TableCell>R$ {produto.totalValue.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
                       <TableCell colSpan={4}></TableCell>
                       <TableCell>
-                        <strong>R$ {valorTotalEstoque.toFixed(2)}</strong>
+                        <strong>R$ {Number(totalInventoryValue).toFixed(2)}</strong>
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -324,13 +392,13 @@ export function RelatoriosPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {produtosAbaixoMinimo.map(produto => (
-                        <TableRow key={produto.id}>
-                          <TableCell>{produto.id}</TableCell>
-                          <TableCell>{produto.nome}</TableCell>
-                          <TableCell>{produto.quantidadeMinima}</TableCell>
-                          <TableCell>{produto.quantidadeEstoque}</TableCell>
-                          <TableCell>{produto.quantidadeMinima - produto.quantidadeEstoque}</TableCell>
+                      {productsBelowMinimum.map(product => (
+                        <TableRow key={product.productId}>
+                          <TableCell>{product.productId}</TableCell>
+                          <TableCell>{product.productName}</TableCell>
+                          <TableCell>{product.minQTD}</TableCell>
+                          <TableCell>{product.stockQTD}</TableCell>
+                          <TableCell>{product.minQTD - product.stockQTD}</TableCell>
                           <TableCell>
                             <Badge variant="destructive">Crítico</Badge>
                           </TableCell>
@@ -407,8 +475,8 @@ export function RelatoriosPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="mb-2">{produtoMaisEntradas.produto}</p>
-                    <p className="text-muted-foreground">{produtoMaisEntradas.entradas} unidades</p>
+                    <p className="mb-2">{produtoMaisEntradas.productName}</p>
+                    <p className="text-muted-foreground">{produtoMaisEntradas.entries} unidades</p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -419,8 +487,8 @@ export function RelatoriosPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="mb-2">{produtoMaisSaidas.produto}</p>
-                    <p className="text-muted-foreground">{produtoMaisSaidas.saidas} unidades</p>
+                    <p className="mb-2">{produtoMaisSaidas.productName}</p>
+                    <p className="text-muted-foreground">{produtoMaisSaidas.exits} unidades</p>
                   </CardContent>
                 </Card>
               </div>
@@ -437,10 +505,10 @@ export function RelatoriosPage() {
                   <TableBody>
                     {movimentoPorProduto.map((item, index) => (
                       <TableRow key={index}>
-                        <TableCell>{item.produto}</TableCell>
-                        <TableCell className="text-green-600">+{item.entradas}</TableCell>
-                        <TableCell className="text-red-600">-{item.saidas}</TableCell>
-                        <TableCell>{item.entradas - item.saidas}</TableCell>
+                        <TableCell>{item.productId}</TableCell>
+                        <TableCell className="text-green-600">+{item.entries}</TableCell>
+                        <TableCell className="text-red-600">-{item.exits}</TableCell>
+                        <TableCell>{item.entries - item.exits}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
