@@ -1,6 +1,6 @@
 // src/lib/priceAdjustmentsApi.ts
 import axios from 'axios';
-import {
+import type {
   ApplyPriceAdjustmentDTO,
   PriceAdjustmentHistoryItemDTO,
   CategoryPercentDTO,
