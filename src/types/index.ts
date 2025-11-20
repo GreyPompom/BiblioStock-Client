@@ -17,6 +17,8 @@ export type Autor = {
 export type Produto = {
   id: string;
   nome: string;
+  sku: string;
+  tipoProduto: string;
   precoUnitario: number;
   unidadeMedida: string;
   quantidadeEstoque: number;

@@ -1,17 +1,38 @@
 import { useState, useEffect } from 'react';
 import { Produto, Categoria, Autor } from '../types';
-import { getProdutos, saveProdutos, getCategorias, getAutores } from '../lib/storage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { fetchProdutos } from '../lib/api/productsApi';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Plus, Pencil, Trash2, Search, AlertTriangle, X } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Checkbox } from './ui/checkbox';
+import api from '../lib/api';
+
+// Função para mapear produto do backend para frontend
+const mapProdutoFromBackend = (produtoBackend: any): Produto => {
+  console.log('Mapeando produto do backend:', produtoBackend); // Debug
+  return {
+    id: produtoBackend.id,
+    nome: produtoBackend.name || produtoBackend.nome || '-',
+    sku: produtoBackend.sku || '-',
+    tipoProduto: produtoBackend.productType || produtoBackend.tipoProduto || 'Livro',
+    precoUnitario: produtoBackend.price || produtoBackend.precoUnitario || 0,
+    unidadeMedida: produtoBackend.unit || produtoBackend.unidadeMedida || 'unidade',
+    quantidadeEstoque: produtoBackend.stockQty || produtoBackend.quantidadeEstoque || 0,
+    quantidadeMinima: produtoBackend.minQty || produtoBackend.quantidadeMinima || 0,
+    quantidadeMaxima: produtoBackend.maxQty || produtoBackend.quantidadeMaxima || 0,
+    categoriaId: (produtoBackend.categoryId || produtoBackend.categoriaId)?.toString() || '',
+    authorIds: (produtoBackend.authorIds || produtoBackend.authorIds || []).map((id: any) => id.toString()),
+    editora: produtoBackend.publisher || produtoBackend.editora || '-',
+    isbn: produtoBackend.isbn || '-'
+  };
+};
 
 export function ProdutosPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -24,9 +45,13 @@ export function ProdutosPage() {
   const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('all');
-  
+  const [filterTipoProduto, setFilterTipoProduto] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
+
   const [formData, setFormData] = useState({
     nome: '',
+    sku: '',
+    tipoProduto: 'Livro',
     precoUnitario: '',
     unidadeMedida: 'unidade',
     quantidadeEstoque: '',
@@ -35,7 +60,7 @@ export function ProdutosPage() {
     categoriaId: '',
     authorIds: [] as string[],
     editora: '',
-    isbn: '',
+    isbn: ''
   });
 
   useEffect(() => {
@@ -44,12 +69,41 @@ export function ProdutosPage() {
 
   useEffect(() => {
     filterProdutos();
-  }, [produtos, searchTerm, filterCategoria]);
+  }, [produtos, searchTerm, filterCategoria, filterTipoProduto]);
 
-  const loadData = () => {
-    setProdutos(getProdutos());
-    setCategorias(getCategorias());
-    setAutores(getAutores());
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      console.log('Carregando dados...'); // Debug
+
+      const produtosData = await fetchProdutos();
+      console.log('Produtos recebidos:', produtosData); // Debug
+
+      // Garantir que todos os produtos estão mapeados corretamente
+      const produtosMapeados = produtosData.map((produto: any) => {
+        // Se o produto já veio mapeado do fetchProdutos, use-o diretamente
+        if (produto.nome && produto.sku !== undefined) {
+          return produto;
+        }
+        // Caso contrário, mapeie
+        return mapProdutoFromBackend(produto);
+      });
+
+      console.log('Produtos mapeados:', produtosMapeados); // Debug
+      setProdutos(produtosMapeados);
+
+      const categoriasRes = await api.get<Categoria[]>('/categories');
+      setCategorias(categoriasRes.data);
+
+      const autoresRes = await api.get<Autor[]>('/authors');
+      setAutores(autoresRes.data);
+
+    } catch (error) {
+      toast.error('Erro ao carregar dados da API');
+      console.error('Erro detalhado:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filterProdutos = () => {
@@ -61,9 +115,11 @@ export function ProdutosPage() {
         const autoresNomes = getAutoresNomes(p.authorIds).toLowerCase();
         return (
           p.nome.toLowerCase().includes(term) ||
+          (p.sku && p.sku.toLowerCase().includes(term)) ||
+          (p.tipoProduto && p.tipoProduto.toLowerCase().includes(term)) ||
           autoresNomes.includes(term) ||
-          p.editora.toLowerCase().includes(term) ||
-          p.isbn.includes(term)
+          (p.editora && p.editora.toLowerCase().includes(term)) ||
+          (p.isbn && p.isbn.includes(term))
         );
       });
     }
@@ -72,12 +128,18 @@ export function ProdutosPage() {
       filtered = filtered.filter(p => p.categoriaId === filterCategoria);
     }
 
+    if (filterTipoProduto !== 'all') {
+      filtered = filtered.filter(p => p.tipoProduto === filterTipoProduto);
+    }
+
     setFilteredProdutos(filtered);
   };
 
   const resetForm = () => {
     setFormData({
       nome: '',
+      sku: '',
+      tipoProduto: 'Livro',
       precoUnitario: '',
       unidadeMedida: 'unidade',
       quantidadeEstoque: '',
@@ -86,25 +148,28 @@ export function ProdutosPage() {
       categoriaId: '',
       authorIds: [],
       editora: '',
-      isbn: '',
+      isbn: ''
     });
     setEditingProduto(null);
   };
 
   const handleOpenDialog = (produto?: Produto) => {
     if (produto) {
+      console.log('Editando produto:', produto); // Debug
       setEditingProduto(produto);
       setFormData({
-        nome: produto.nome,
-        precoUnitario: produto.precoUnitario.toString(),
-        unidadeMedida: produto.unidadeMedida,
-        quantidadeEstoque: produto.quantidadeEstoque.toString(),
-        quantidadeMinima: produto.quantidadeMinima.toString(),
-        quantidadeMaxima: produto.quantidadeMaxima.toString(),
-        categoriaId: produto.categoriaId,
+        nome: produto.nome || '',
+        sku: produto.sku || '',
+        tipoProduto: produto.tipoProduto || 'Livro',
+        precoUnitario: produto.precoUnitario?.toString() || '',
+        unidadeMedida: produto.unidadeMedida || 'unidade',
+        quantidadeEstoque: produto.quantidadeEstoque?.toString() || '',
+        quantidadeMinima: produto.quantidadeMinima?.toString() || '',
+        quantidadeMaxima: produto.quantidadeMaxima?.toString() || '',
+        categoriaId: produto.categoriaId || '',
         authorIds: produto.authorIds || [],
-        editora: produto.editora,
-        isbn: produto.isbn,
+        editora: produto.editora || '',
+        isbn: produto.isbn || ''
       });
     } else {
       resetForm();
@@ -112,80 +177,143 @@ export function ProdutosPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
-    if (!formData.nome || !formData.categoriaId || !formData.precoUnitario) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    // RN006: Cada livro deve ter pelo menos um autor associado
-    if (formData.authorIds.length === 0) {
-      toast.error('Selecione pelo menos um autor para o livro');
-      return;
-    }
-
-    // Validações de quantidade
-    const estoque = parseInt(formData.quantidadeEstoque) || 0;
-    const minima = parseInt(formData.quantidadeMinima) || 0;
-    const maxima = parseInt(formData.quantidadeMaxima) || 0;
-
-    if (estoque < 0 || minima < 0 || maxima < 0) {
-      toast.error('As quantidades não podem ser menores que zero');
-      return;
-    }
-
-    if (estoque > 99999 || minima > 99999 || maxima > 99999) {
-      toast.error('As quantidades não podem ter mais de 5 dígitos');
-      return;
-    }
-
-    const novoProduto: Produto = {
-      id: editingProduto?.id || Date.now().toString(),
-      nome: formData.nome,
-      precoUnitario: parseFloat(formData.precoUnitario),
-      unidadeMedida: formData.unidadeMedida,
-      quantidadeEstoque: parseInt(formData.quantidadeEstoque) || 0,
-      quantidadeMinima: parseInt(formData.quantidadeMinima) || 0,
-      quantidadeMaxima: parseInt(formData.quantidadeMaxima) || 0,
-      categoriaId: formData.categoriaId,
-      authorIds: formData.authorIds,
-      editora: formData.editora,
-      isbn: formData.isbn,
-      dataCadastro: editingProduto?.dataCadastro || new Date().toISOString(),
-    };
-
-    const updatedProdutos = editingProduto
-      ? produtos.map(p => p.id === editingProduto.id ? novoProduto : p)
-      : [...produtos, novoProduto];
-
-    saveProdutos(updatedProdutos);
-    setProdutos(updatedProdutos);
-    setIsDialogOpen(false);
-    resetForm();
-    toast.success(editingProduto ? 'Produto atualizado com sucesso!' : 'Produto cadastrado com sucesso!');
-  };
-
   const handleDelete = (id: string) => {
     setProdutoToDelete(id);
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (produtoToDelete) {
-      const updatedProdutos = produtos.filter(p => p.id !== produtoToDelete);
-      saveProdutos(updatedProdutos);
-      setProdutos(updatedProdutos);
+  const confirmDelete = async () => {
+    if (!produtoToDelete) return;
+
+    try {
+      await api.delete(`/products/${produtoToDelete}`);
+      setProdutos(prev => prev.filter(p => p.id !== produtoToDelete));
       toast.success('Produto excluído com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao excluir produto');
+      console.error(error);
     }
+
     setIsDeleteDialogOpen(false);
     setProdutoToDelete(null);
   };
 
-  const getCategoriaNome = (categoriaId: string) => {
-    return categorias.find(c => c.id === categoriaId)?.nome || 'N/A';
+  const handleSave = async () => {
+
+    try {
+
+      const estoque = parseInt(formData.quantidadeEstoque) || 0;
+      const minima = parseInt(formData.quantidadeMinima) || 0;
+      const maxima = parseInt(formData.quantidadeMaxima) || 0;
+      const preco = parseFloat(formData.precoUnitario) || 0;
+
+      // payload CORRETO baseado na estrutura do backend
+      const payload = {
+        name: formData.nome,
+        sku: formData.sku || undefined,
+        productType: formData.tipoProduto || 'Livro',
+        price: preco,
+        unit: formData.unidadeMedida || 'unidade',
+        stockQty: estoque,
+        minQty: minima,
+        maxQty: maxima,
+        categoryId: Number(formData.categoriaId),
+        authorIds: formData.authorIds.map(id => Number(id)),
+        publisher: formData.editora || undefined,
+        isbn: formData.isbn || undefined
+      };
+
+      console.log('Enviando payload:', payload); // Debug
+
+      if (editingProduto) {
+        const res = await api.put(`/products/${editingProduto.id}`, payload);
+        console.log('Resposta da edição:', res.data); // Debug
+
+        const updatedProduto = mapProdutoFromBackend(res.data);
+
+        setProdutos(prev =>
+          prev.map(p => (p.id === editingProduto.id ? updatedProduto : p))
+        );
+        toast.success('Produto atualizado com sucesso!');
+      }
+      else {
+        // criar
+        const res = await api.post('/products', payload);
+        console.log('Resposta da criação:', res.data); // Debug
+
+        const novoProduto = mapProdutoFromBackend(res.data);
+        setProdutos(prev => [...prev, novoProduto]);
+        toast.success('Produto criado com sucesso!');
+      }
+
+      // fecha modal e reseta formulário
+      setIsDialogOpen(false);
+      resetForm();
+
+    } catch (error: any) {
+      if (error.response) {
+        console.error('API error:', error.response.data);
+        // Extrai a mensagem de erro do backend
+        const errorMessage = extractBackendErrorMessage(error.response.data);
+        toast.error(errorMessage);
+      } else {
+        console.error(error);
+        toast.error('Erro ao salvar produto');
+      }
+    }
   };
 
-  // RN009: Exibir múltiplos autores separados por vírgula
+  // Função auxiliar para extrair mensagens de erro do backend
+  const extractBackendErrorMessage = (errorData: any): string => {
+    // Tenta diferentes formatos de resposta de erro do Spring Boot
+
+    // Formato 1: Erro direto
+    if (typeof errorData === 'string') {
+      return errorData;
+    }
+
+    // Formato 2: { error: "mensagem" }
+    if (errorData.error) {
+      return errorData.error;
+    }
+
+    // Formato 3: { message: "mensagem" }
+    if (errorData.message) {
+      return errorData.message;
+    }
+
+    // Formato 4: { details: "mensagem" }
+    if (errorData.details) {
+      return errorData.details;
+    }
+
+    // Formato 5: Array de errors de validação
+    if (Array.isArray(errorData.errors)) {
+      const messages = errorData.errors.map((err: any) =>
+        err.defaultMessage || err.message || err.field || 'Erro de validação'
+      );
+      return messages.join(', ');
+    }
+
+    // Formato 6: Objeto com campos de validação
+    if (typeof errorData === 'object') {
+      const messages = Object.values(errorData).filter(msg =>
+        typeof msg === 'string'
+      );
+      if (messages.length > 0) {
+        return messages.join(', ');
+      }
+    }
+
+    // Mensagem padrão
+    return 'Erro ao processar a solicitação. Tente novamente.';
+  };
+
+  const getCategoriaNome = (categoriaId: string) => {
+    const categoria = categorias.find(c => c.id === categoriaId);
+    return categoria?.nome || 'N/A';
+  };
+
   const getAutoresNomes = (authorIds: string[]) => {
     if (!authorIds || authorIds.length === 0) return 'Nenhum autor';
     return authorIds
@@ -212,6 +340,17 @@ export function ProdutosPage() {
       : [...formData.authorIds, authorId];
     setFormData({ ...formData, authorIds: newAuthorIds });
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Carregando produtos...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -247,18 +386,35 @@ export function ProdutosPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={filterTipoProduto} onValueChange={setFilterTipoProduto}>
+          <SelectTrigger className="w-full md:w-[200px]">
+            <SelectValue placeholder="Filtrar por tipo de produto" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            <SelectItem value="Livro">Livro</SelectItem>
+            <SelectItem value="Revista">Revista</SelectItem>
+            <SelectItem value="Outro">Outro</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead>SKU</TableHead>
               <TableHead>Nome</TableHead>
+              <TableHead>ISBN</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Autor(es)</TableHead>
+              <TableHead>Editora</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Preço</TableHead>
-              <TableHead>Estoque</TableHead>
+              <TableHead>Unidade</TableHead>
+              <TableHead>Qtd. Estoque</TableHead>
+              <TableHead>Qtd. Mínima</TableHead>
+              <TableHead>Qtd. Máxima</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -266,24 +422,30 @@ export function ProdutosPage() {
           <TableBody>
             {filteredProdutos.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={14} className="h-24 text-center text-muted-foreground">
                   Nenhum produto encontrado
                 </TableCell>
               </TableRow>
             ) : (
               filteredProdutos.map(produto => (
                 <TableRow key={produto.id}>
-                  <TableCell>{produto.id}</TableCell>
+                  <TableCell>{produto.sku || '-'}</TableCell>
                   <TableCell>{produto.nome}</TableCell>
+                  <TableCell>{produto.isbn || '-'}</TableCell>
+                  <TableCell>{produto.tipoProduto || '-'}</TableCell>
                   <TableCell>{getAutoresNomes(produto.authorIds)}</TableCell>
+                  <TableCell>{produto.editora || '-'}</TableCell>
                   <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
                   <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
+                  <TableCell>{produto.unidadeMedida || '-'}</TableCell>
                   <TableCell>
                     {produto.quantidadeEstoque}
                     {produto.quantidadeEstoque < produto.quantidadeMinima && (
                       <AlertTriangle className="ml-1 inline size-4 text-orange-500" />
                     )}
                   </TableCell>
+                  <TableCell>{produto.quantidadeMinima}</TableCell>
+                  <TableCell>{produto.quantidadeMaxima || '-'}</TableCell>
                   <TableCell>{getStatusBadge(produto)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -315,9 +477,36 @@ export function ProdutosPage() {
               <Label htmlFor="nome">Nome do Produto *</Label>
               <Input
                 id="nome"
+                maxLength={200}
                 value={formData.nome}
                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="sku">SKU *</Label>
+                <Input
+                  id="sku"
+                  maxLength={50}
+                  value={formData.sku}
+                  onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                  placeholder="Ex: LIV-001"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="tipoProduto">Tipo de Produto *</Label>
+                <Select value={formData.tipoProduto} onValueChange={(value) => setFormData({ ...formData, tipoProduto: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Livro">Livro</SelectItem>
+                    <SelectItem value="Revista">Revista</SelectItem>
+                    <SelectItem value="Outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Seleção Múltipla de Autores */}
@@ -372,14 +561,16 @@ export function ProdutosPage() {
                 <Label htmlFor="editora">Editora</Label>
                 <Input
                   id="editora"
+                  maxLength={100}
                   value={formData.editora}
                   onChange={(e) => setFormData({ ...formData, editora: e.target.value })}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="isbn">ISBN</Label>
+                <Label htmlFor="isbn">ISBN *</Label>
                 <Input
                   id="isbn"
+                  maxLength={20}
                   value={formData.isbn}
                   onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
                 />
@@ -422,6 +613,7 @@ export function ProdutosPage() {
                 <Label htmlFor="unidade">Unidade de Medida</Label>
                 <Input
                   id="unidade"
+                  maxLength={20}
                   value={formData.unidadeMedida}
                   onChange={(e) => setFormData({ ...formData, unidadeMedida: e.target.value })}
                 />
@@ -429,7 +621,7 @@ export function ProdutosPage() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="estoque">Qtd. Estoque</Label>
+                <Label htmlFor="estoque">Qtd. Estoque *</Label>
                 <Input
                   id="estoque"
                   type="number"
@@ -452,7 +644,7 @@ export function ProdutosPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="minima">Qtd. Mínima</Label>
+                <Label htmlFor="minima">Qtd. Mínima *</Label>
                 <Input
                   id="minima"
                   type="number"
@@ -527,3 +719,5 @@ export function ProdutosPage() {
     </div>
   );
 }
+
+export default ProdutosPage;
