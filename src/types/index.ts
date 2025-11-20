@@ -11,7 +11,7 @@ export type Autor = {
   nomeCompleto: string;
   nacionalidade: string;
   biografia: string;
-  dataCadastro: string;
+  dataNascimento: string;
 };
 
 export type Produto = {
