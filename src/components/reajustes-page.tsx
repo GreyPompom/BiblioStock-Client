@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
+import type {
   CategoryPercentDTO,
   PriceAdjustmentHistoryItemDTO,
   ScopeType,
@@ -8,6 +8,7 @@ import {
   getCategoriesPercent,
   getPriceAdjustmentsHistory,
   applyPriceAdjustment,
+  getGlobalPercent,
 } from '../lib/api/priceAdjustmentsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -36,15 +37,17 @@ export function ReajustesPage() {
   const [tipoReajuste, setTipoReajuste] = useState<ScopeType | 'PADRAO_UI'>('GLOBAL');
   const [percentualInput, setPercentualInput] = useState(''); // em %
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
+  const [globalPercent, setGlobalPercent] = useState<number>(0);
   const [nota, setNota] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [cats, hist] = await Promise.all([
+      const [cats, hist, global] = await Promise.all([
         getCategoriesPercent(),
         getPriceAdjustmentsHistory(),
+        getGlobalPercent(),
       ]);
       // ordenar histórico por data desc
       const sortedHist = [...hist].sort(
@@ -52,6 +55,7 @@ export function ReajustesPage() {
       );
       setCategoriasPercent(cats);
       setHistorico(sortedHist);
+      setGlobalPercent(global);
     } catch (error) {
       console.error(error);
       toast.error('Erro ao carregar dados de reajuste.');
@@ -159,11 +163,14 @@ export function ReajustesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Percent className="size-5" />
-              Reajuste Global
+              Reajuste Global 
             </CardTitle>
             <CardDescription>Aplicar o mesmo percentual a todos os produtos</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="percentual-global">Percentual {globalPercent.toFixed(2).replace('.', ',')} (%)</Label>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="percentual-global">Percentual (%)</Label>
               <Input

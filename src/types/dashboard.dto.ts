@@ -20,6 +20,8 @@ export interface MovementSummaryDTO {
 
 export interface StockValueDTO {
   totalStockValue: number;
+  totalStockValuePercentage: number;
+  totalProducts: number;
 }
 
 export interface DashboardOverviewDTO {

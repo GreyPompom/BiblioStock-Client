@@ -1,27 +1,34 @@
-// lib/api/productsApi.ts
 import api from '../api';
+import type { ProductRequestDTO, ProductResponseDTO } from '../../types/products.dto';
 
-export const fetchProdutos = async () => {
-  try {
-    const response = await api.get('/products');
-    // Mapeie os dados do backend para o frontend
-    return response.data.map((produto: any) => ({
-      id: produto.id,
-      nome: produto.name,
-      sku: produto.sku,
-      tipoProduto: produto.productType,
-      precoUnitario: produto.price,
-      unidadeMedida: produto.unit,
-      quantidadeEstoque: produto.stockQty,
-      quantidadeMinima: produto.minQty,
-      quantidadeMaxima: produto.maxQty,
-      categoriaId: produto.categoryId?.toString() || '',
-      authorIds: (produto.authorIds || []).map((id: number) => id.toString()),
-      editora: produto.publisher,
-      isbn: produto.isbn
-    }));
-  } catch (error) {
-    console.error('Erro ao buscar produtos:', error);
-    throw error;
-  }
-};
+export async function getProducts(): Promise<ProductResponseDTO[]> {
+  const response = await api.get<ProductResponseDTO[]>('/products');
+  return response.data;
+}
+
+export async function getProductById(id: number): Promise<ProductResponseDTO> {
+  const response = await api.get<ProductResponseDTO>(`/products/${id}`);
+  return response.data;
+}
+
+export async function createProduct(payload: ProductRequestDTO): Promise<ProductResponseDTO> {
+  const response = await api.post<ProductResponseDTO>('/products', payload);
+  return response.data;
+}
+
+export async function updateProduct(
+  id: number,
+  payload: ProductRequestDTO,
+): Promise<ProductResponseDTO> {
+  const response = await api.put<ProductResponseDTO>(`/products/${id}`, payload);
+  return response.data;
+}
+
+export async function deleteProduct(id: number): Promise<void> {
+  await api.delete(`/products/${id}`);
+}
+
+export async function getProductsByCategory(categoryId: number): Promise<ProductResponseDTO[]> {
+  const response = await api.get<ProductResponseDTO[]>(`/products/by-category/${categoryId}`);
+  return response.data;
+}

@@ -2,7 +2,7 @@ export type Categoria = {
   id: string;
   nome: string;
   tamanho: 'Pequeno' | 'Médio' | 'Grande';
-  tipoEmbalagem: 'Papelão' | 'Plástico' | 'Vidro' | 'Lata';
+  tipoEmbalagem: 'Capa Comum' | 'Capa dura' | 'Capa mole' | 'outro';
   percentualReajustePadrao: number;
 };
 
@@ -14,23 +14,7 @@ export type Autor = {
   dataNascimento: string;
 };
 
-export type Produto = {
-  id: string;
-  nome: string;
-  sku: string;
-  tipoProduto: string;
-  precoUnitario: number;
-  unidadeMedida: string;
-  quantidadeEstoque: number;
-  quantidadeMinima: number;
-  quantidadeMaxima: number;
-  categoriaId: string;
-  authorIds: string[];
-  editora: string;
-  isbn: string;
-  dataCadastro: string;
-  priceComPercentualReajuste?: number;
-};
+
 
 export type TipoMovimentacao = 'Entrada' | 'Saída';
 

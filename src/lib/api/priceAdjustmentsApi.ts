@@ -25,3 +25,9 @@ export async function getCategoryPercentById(categoryId: number): Promise<Catego
 export async function applyPriceAdjustment(payload: ApplyPriceAdjustmentDTO): Promise<void> {
   await api.post('/prices/adjust', payload);
 }
+
+export async function getGlobalPercent(): Promise<number> {
+  const response = await api.get<number>('/global-percent');
+  return response.data;
+}
+

@@ -1,67 +1,80 @@
-import { useState, useEffect } from 'react';
-import { Produto, Categoria, Autor } from '../types';
+// src/components/ProdutosPage.tsx
+import { useState, useEffect, type SetStateAction } from 'react';
+import type {  AuthorResponseDTO } from '../types/authors.dto';
+import type { CategoryResponseDTO } from '../types/Category.dto';
+import type {
+  ProductRequestDTO,
+  ProductResponseDTO,
+  ProductFormData,
+} from '../types/products.dto';
+import { createEmptyProductFormData } from '../types/products.dto';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { fetchProdutos } from '../lib/api/productsApi';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 import { Plus, Pencil, Trash2, Search, AlertTriangle, X } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner';
 import { Checkbox } from './ui/checkbox';
-import api from '../lib/api';
-
-// Função para mapear produto do backend para frontend
-const mapProdutoFromBackend = (produtoBackend: any): Produto => {
-  console.log('Mapeando produto do backend:', produtoBackend); // Debug
-  return {
-    id: produtoBackend.id,
-    nome: produtoBackend.name || produtoBackend.nome || '-',
-    sku: produtoBackend.sku || '-',
-    tipoProduto: produtoBackend.productType || produtoBackend.tipoProduto || 'Livro',
-    precoUnitario: produtoBackend.price || produtoBackend.precoUnitario || 0,
-    unidadeMedida: produtoBackend.unit || produtoBackend.unidadeMedida || 'unidade',
-    quantidadeEstoque: produtoBackend.stockQty || produtoBackend.quantidadeEstoque || 0,
-    quantidadeMinima: produtoBackend.minQty || produtoBackend.quantidadeMinima || 0,
-    quantidadeMaxima: produtoBackend.maxQty || produtoBackend.quantidadeMaxima || 0,
-    categoriaId: (produtoBackend.categoryId || produtoBackend.categoriaId)?.toString() || '',
-    authorIds: (produtoBackend.authorIds || produtoBackend.authorIds || []).map((id: any) => id.toString()),
-    editora: produtoBackend.publisher || produtoBackend.editora || '-',
-    isbn: produtoBackend.isbn || '-'
-  };
-};
+import { toast } from 'sonner';
+import {
+  getProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from '../lib/api/productsApi';
+import { getAuthors } from '../lib/api/authorsApi';
+import { getCategories } from '../lib/api/categoryApi';
 
 export function ProdutosPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [autores, setAutores] = useState<Autor[]>([]);
-  const [filteredProdutos, setFilteredProdutos] = useState<Produto[]>([]);
+  const [produtos, setProdutos] = useState<ProductResponseDTO[]>([]);
+  const [categorias, setCategorias] = useState<CategoryResponseDTO[]>([]);
+  const [autores, setAutores] = useState<AuthorResponseDTO[]>([]);
+  const [filteredProdutos, setFilteredProdutos] =
+    useState<ProductResponseDTO[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [produtoToDelete, setProdutoToDelete] = useState<string | null>(null);
-  const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
+  const [produtoToDelete, setProdutoToDelete] = useState<number | null>(null);
+  const [editingProduto, setEditingProduto] =
+    useState<ProductResponseDTO | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('all');
   const [filterTipoProduto, setFilterTipoProduto] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
-
-  const [formData, setFormData] = useState({
-    nome: '',
-    sku: '',
-    tipoProduto: 'Livro',
-    precoUnitario: '',
-    unidadeMedida: 'unidade',
-    quantidadeEstoque: '',
-    quantidadeMinima: '',
-    quantidadeMaxima: '',
-    categoriaId: '',
-    authorIds: [] as string[],
-    editora: '',
-    isbn: ''
-  });
+  const [formData, setFormData] = useState<ProductFormData>(
+    createEmptyProductFormData(),
+  );
 
   useEffect(() => {
     loadData();
@@ -74,33 +87,18 @@ export function ProdutosPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      console.log('Carregando dados...'); // Debug
 
-      const produtosData = await fetchProdutos();
-      console.log('Produtos recebidos:', produtosData); // Debug
+      const produtosDto = await getProducts();
+      setProdutos(produtosDto);
 
-      // Garantir que todos os produtos estão mapeados corretamente
-      const produtosMapeados = produtosData.map((produto: any) => {
-        // Se o produto já veio mapeado do fetchProdutos, use-o diretamente
-        if (produto.nome && produto.sku !== undefined) {
-          return produto;
-        }
-        // Caso contrário, mapeie
-        return mapProdutoFromBackend(produto);
-      });
+      const categoriasDto = await getCategories();
+      setCategorias(categoriasDto);
 
-      console.log('Produtos mapeados:', produtosMapeados); // Debug
-      setProdutos(produtosMapeados);
-
-      const categoriasRes = await api.get<Categoria[]>('/categories');
-      setCategorias(categoriasRes.data);
-
-      const autoresRes = await api.get<Autor[]>('/authors');
-      setAutores(autoresRes.data);
-
+      const autoresDto = await getAuthors();
+      setAutores(autoresDto);
     } catch (error) {
       toast.error('Erro ao carregar dados da API');
-      console.error('Erro detalhado:', error);
+      console.error('Erro ao carregar dados:', error);
     } finally {
       setIsLoading(false);
     }
@@ -112,64 +110,56 @@ export function ProdutosPage() {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(p => {
-        const autoresNomes = getAutoresNomes(p.authorIds).toLowerCase();
+        const autoresNomes = (p.authors ?? [])
+          .map(a => a.fullName)
+          .join(', ')
+          .toLowerCase();
         return (
-          p.nome.toLowerCase().includes(term) ||
+          p.name.toLowerCase().includes(term) ||
           (p.sku && p.sku.toLowerCase().includes(term)) ||
-          (p.tipoProduto && p.tipoProduto.toLowerCase().includes(term)) ||
+          (p.productType && p.productType.toLowerCase().includes(term)) ||
           autoresNomes.includes(term) ||
-          (p.editora && p.editora.toLowerCase().includes(term)) ||
+          (p.publisher && p.publisher.toLowerCase().includes(term)) ||
           (p.isbn && p.isbn.includes(term))
         );
       });
     }
 
     if (filterCategoria !== 'all') {
-      filtered = filtered.filter(p => p.categoriaId === filterCategoria);
+      filtered = filtered.filter(
+        p => p.category && String(p.category.id) === filterCategoria,
+      );
     }
 
     if (filterTipoProduto !== 'all') {
-      filtered = filtered.filter(p => p.tipoProduto === filterTipoProduto);
+      filtered = filtered.filter(p => p.productType === filterTipoProduto);
     }
 
     setFilteredProdutos(filtered);
   };
 
   const resetForm = () => {
-    setFormData({
-      nome: '',
-      sku: '',
-      tipoProduto: 'Livro',
-      precoUnitario: '',
-      unidadeMedida: 'unidade',
-      quantidadeEstoque: '',
-      quantidadeMinima: '',
-      quantidadeMaxima: '',
-      categoriaId: '',
-      authorIds: [],
-      editora: '',
-      isbn: ''
-    });
+    setFormData(createEmptyProductFormData());
     setEditingProduto(null);
   };
 
-  const handleOpenDialog = (produto?: Produto) => {
+  const handleOpenDialog = (produto?: ProductResponseDTO) => {
     if (produto) {
-      console.log('Editando produto:', produto); // Debug
       setEditingProduto(produto);
       setFormData({
-        nome: produto.nome || '',
+        nome: produto.name || '',
         sku: produto.sku || '',
-        tipoProduto: produto.tipoProduto || 'Livro',
-        precoUnitario: produto.precoUnitario?.toString() || '',
-        unidadeMedida: produto.unidadeMedida || 'unidade',
-        quantidadeEstoque: produto.quantidadeEstoque?.toString() || '',
-        quantidadeMinima: produto.quantidadeMinima?.toString() || '',
-        quantidadeMaxima: produto.quantidadeMaxima?.toString() || '',
-        categoriaId: produto.categoriaId || '',
-        authorIds: produto.authorIds || [],
-        editora: produto.editora || '',
-        isbn: produto.isbn || ''
+        tipoProduto: produto.productType || 'Livro',
+        precoUnitario: produto.price.toString(),
+        unidadeMedida: produto.unit || 'unidade',
+        quantidadeEstoque: produto.stockQty?.toString() || '',
+        quantidadeMinima: produto.minQty?.toString() || '',
+        quantidadeMaxima: produto.maxQty?.toString() || '',
+        categoriaId: produto.category ? String(produto.category.id) : '',
+        authorIds: (produto.authors ?? []).map(a => String(a.id)),
+        editora: produto.publisher || '',
+        isbn: produto.isbn || '',
+        precoComPercentualReajuste: produto.priceWithPercent.toString(),
       });
     } else {
       resetForm();
@@ -177,159 +167,135 @@ export function ProdutosPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: number) => {
     setProdutoToDelete(id);
     setIsDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!produtoToDelete) return;
+    if (produtoToDelete == null) return;
 
     try {
-      await api.delete(`/products/${produtoToDelete}`);
+      await deleteProduct(produtoToDelete);
       setProdutos(prev => prev.filter(p => p.id !== produtoToDelete));
       toast.success('Produto excluído com sucesso!');
-    } catch (error) {
-      toast.error('Erro ao excluir produto');
+    } catch (error: any) {
+      if (error.response) {
+        const errorMessage = extractBackendErrorMessage(error.response.data);
+        toast.error(errorMessage);
+      } else {
+        toast.error('Erro ao excluir produto.');
+      }
       console.error(error);
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setProdutoToDelete(null);
     }
-
-    setIsDeleteDialogOpen(false);
-    setProdutoToDelete(null);
   };
 
   const handleSave = async () => {
-
     try {
-
       const estoque = parseInt(formData.quantidadeEstoque) || 0;
       const minima = parseInt(formData.quantidadeMinima) || 0;
-      const maxima = parseInt(formData.quantidadeMaxima) || 0;
+      const maxima = formData.quantidadeMaxima
+        ? parseInt(formData.quantidadeMaxima)
+        : 0;
       const preco = parseFloat(formData.precoUnitario) || 0;
 
-      // payload CORRETO baseado na estrutura do backend
-      const payload = {
-        name: formData.nome,
-        sku: formData.sku || undefined,
+      if (
+        !formData.nome ||
+        !formData.sku ||
+        !formData.categoriaId ||
+        !formData.isbn
+      ) {
+        toast.error('Preencha todos os campos obrigatórios (*).');
+        return;
+      }
+
+      if (!formData.authorIds.length) {
+        toast.error('Selecione pelo menos um autor.');
+        return;
+      }
+
+      const payload: ProductRequestDTO = {
+        name: formData.nome.trim(),
+        sku: formData.sku.trim(),
         productType: formData.tipoProduto || 'Livro',
         price: preco,
         unit: formData.unidadeMedida || 'unidade',
         stockQty: estoque,
         minQty: minima,
-        maxQty: maxima,
+        maxQty: maxima || null,
         categoryId: Number(formData.categoriaId),
         authorIds: formData.authorIds.map(id => Number(id)),
-        publisher: formData.editora || undefined,
-        isbn: formData.isbn || undefined
+        publisher: formData.editora ? formData.editora.trim() : null,
+        isbn: formData.isbn.trim(),
       };
 
-      console.log('Enviando payload:', payload); // Debug
-
       if (editingProduto) {
-        const res = await api.put(`/products/${editingProduto.id}`, payload);
-        console.log('Resposta da edição:', res.data); // Debug
-
-        const updatedProduto = mapProdutoFromBackend(res.data);
-
+        const updatedDto = await updateProduct(editingProduto.id, payload);
         setProdutos(prev =>
-          prev.map(p => (p.id === editingProduto.id ? updatedProduto : p))
+          prev.map(p => (p.id === editingProduto.id ? updatedDto : p)),
         );
         toast.success('Produto atualizado com sucesso!');
-      }
-      else {
-        // criar
-        const res = await api.post('/products', payload);
-        console.log('Resposta da criação:', res.data); // Debug
-
-        const novoProduto = mapProdutoFromBackend(res.data);
-        setProdutos(prev => [...prev, novoProduto]);
+      } else {
+        const createdDto = await createProduct(payload);
+        setProdutos(prev => [...prev, createdDto]);
         toast.success('Produto criado com sucesso!');
       }
 
-      // fecha modal e reseta formulário
       setIsDialogOpen(false);
       resetForm();
-
     } catch (error: any) {
       if (error.response) {
         console.error('API error:', error.response.data);
-        // Extrai a mensagem de erro do backend
         const errorMessage = extractBackendErrorMessage(error.response.data);
         toast.error(errorMessage);
       } else {
         console.error(error);
-        toast.error('Erro ao salvar produto');
+        toast.error('Erro ao salvar produto.');
       }
     }
   };
 
-  // Função auxiliar para extrair mensagens de erro do backend
   const extractBackendErrorMessage = (errorData: any): string => {
-    // Tenta diferentes formatos de resposta de erro do Spring Boot
+    if (typeof errorData === 'string') return errorData;
+    if (errorData.error) return errorData.error;
+    if (errorData.message) return errorData.message;
+    if (errorData.details) return errorData.details;
 
-    // Formato 1: Erro direto
-    if (typeof errorData === 'string') {
-      return errorData;
-    }
-
-    // Formato 2: { error: "mensagem" }
-    if (errorData.error) {
-      return errorData.error;
-    }
-
-    // Formato 3: { message: "mensagem" }
-    if (errorData.message) {
-      return errorData.message;
-    }
-
-    // Formato 4: { details: "mensagem" }
-    if (errorData.details) {
-      return errorData.details;
-    }
-
-    // Formato 5: Array de errors de validação
     if (Array.isArray(errorData.errors)) {
       const messages = errorData.errors.map((err: any) =>
-        err.defaultMessage || err.message || err.field || 'Erro de validação'
+        err.defaultMessage || err.message || err.field || 'Erro de validação',
       );
       return messages.join(', ');
     }
 
-    // Formato 6: Objeto com campos de validação
     if (typeof errorData === 'object') {
-      const messages = Object.values(errorData).filter(msg =>
-        typeof msg === 'string'
+      const messages = Object.values(errorData).filter(
+        msg => typeof msg === 'string',
       );
-      if (messages.length > 0) {
-        return messages.join(', ');
-      }
+      if (messages.length > 0) return messages.join(', ');
     }
 
-    // Mensagem padrão
     return 'Erro ao processar a solicitação. Tente novamente.';
   };
 
-  const getCategoriaNome = (categoriaId: string) => {
-    const categoria = categorias.find(c => c.id === categoriaId);
-    return categoria?.nome || 'N/A';
-  };
-
-  const getAutoresNomes = (authorIds: string[]) => {
-    if (!authorIds || authorIds.length === 0) return 'Nenhum autor';
-    return authorIds
-      .map(id => autores.find(a => a.id === id)?.nomeCompleto || 'Desconhecido')
-      .join(', ');
-  };
-
-  const getStatusBadge = (produto: Produto) => {
-    if (produto.quantidadeEstoque === 0) {
+  const getStatusBadge = (produto: ProductResponseDTO) => {
+    if (produto.stockQty === 0) {
       return <Badge variant="destructive">Indisponível</Badge>;
     }
-    if (produto.quantidadeEstoque < produto.quantidadeMinima) {
-      return <Badge className="bg-orange-500 hover:bg-orange-600">Estoque Baixo</Badge>;
+    if (produto.stockQty < produto.minQty) {
+      return (
+        <Badge className="bg-orange-500 hover:bg-orange-600">
+          Estoque Baixo
+        </Badge>
+      );
     }
-    if (produto.quantidadeEstoque > produto.quantidadeMaxima) {
-      return <Badge className="bg-blue-500 hover:bg-blue-600">Excedente</Badge>;
+    if (produto.stockQty > produto.maxQty) {
+      return (
+        <Badge className="bg-blue-500 hover:bg-blue-600">Excedente</Badge>
+      );
     }
     return <Badge variant="secondary">Normal</Badge>;
   };
@@ -343,9 +309,9 @@ export function ProdutosPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
           <p className="mt-2 text-muted-foreground">Carregando produtos...</p>
         </div>
       </div>
@@ -357,7 +323,9 @@ export function ProdutosPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2>Gerenciamento de Produtos</h2>
-          <p className="text-muted-foreground">Cadastre e gerencie o estoque de livros e itens da livraria</p>
+          <p className="text-muted-foreground">
+            Cadastre e gerencie o estoque de livros e itens da livraria
+          </p>
         </div>
         <Button onClick={() => handleOpenDialog()} className="gap-2">
           <Plus className="size-4" />
@@ -371,22 +339,30 @@ export function ProdutosPage() {
           <Input
             placeholder="Buscar por nome, autor, editora ou ISBN..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+        <Select
+          value={filterCategoria}
+          onValueChange={(value: SetStateAction<string>) => setFilterCategoria(value)}
+        >
           <SelectTrigger className="w-full md:w-[200px]">
             <SelectValue placeholder="Filtrar por categoria" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as categorias</SelectItem>
             {categorias.map(cat => (
-              <SelectItem key={cat.id} value={cat.id}>{cat.nome}</SelectItem>
+              <SelectItem key={cat.id} value={String(cat.id)}>
+                {cat.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select value={filterTipoProduto} onValueChange={setFilterTipoProduto}>
+        <Select
+          value={filterTipoProduto}
+          onValueChange={(value: SetStateAction<string>) => setFilterTipoProduto(value)}
+        >
           <SelectTrigger className="w-full md:w-[200px]">
             <SelectValue placeholder="Filtrar por tipo de produto" />
           </SelectTrigger>
@@ -411,6 +387,7 @@ export function ProdutosPage() {
               <TableHead>Editora</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Preço</TableHead>
+              <TableHead>W %</TableHead>
               <TableHead>Unidade</TableHead>
               <TableHead>Qtd. Estoque</TableHead>
               <TableHead>Qtd. Mínima</TableHead>
@@ -422,7 +399,10 @@ export function ProdutosPage() {
           <TableBody>
             {filteredProdutos.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={14} className="h-24 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={15}
+                  className="h-24 text-center text-muted-foreground"
+                >
                   Nenhum produto encontrado
                 </TableCell>
               </TableRow>
@@ -430,29 +410,44 @@ export function ProdutosPage() {
               filteredProdutos.map(produto => (
                 <TableRow key={produto.id}>
                   <TableCell>{produto.sku || '-'}</TableCell>
-                  <TableCell>{produto.nome}</TableCell>
+                  <TableCell>{produto.name}</TableCell>
                   <TableCell>{produto.isbn || '-'}</TableCell>
-                  <TableCell>{produto.tipoProduto || '-'}</TableCell>
-                  <TableCell>{getAutoresNomes(produto.authorIds)}</TableCell>
-                  <TableCell>{produto.editora || '-'}</TableCell>
-                  <TableCell>{getCategoriaNome(produto.categoriaId)}</TableCell>
-                  <TableCell>R$ {produto.precoUnitario.toFixed(2)}</TableCell>
-                  <TableCell>{produto.unidadeMedida || '-'}</TableCell>
+                  <TableCell>{produto.productType || '-'}</TableCell>
                   <TableCell>
-                    {produto.quantidadeEstoque}
-                    {produto.quantidadeEstoque < produto.quantidadeMinima && (
+                    {produto.authors.length === 0
+                      ? 'Nenhum autor'
+                      : produto.authors.map(a => a.fullName).join(', ')}
+                  </TableCell>
+                  <TableCell>{produto.publisher || '-'}</TableCell>
+                  <TableCell>{produto.category?.name ?? 'N/A'}</TableCell>
+                  <TableCell>R$ {produto.price.toFixed(2)}</TableCell>
+                  <TableCell>
+                    R$ {produto.priceWithPercent?.toFixed(2) ?? 0}
+                  </TableCell>
+                  <TableCell>{produto.unit || '-'}</TableCell>
+                  <TableCell>
+                    {produto.stockQty}
+                    {produto.stockQty < produto.minQty && (
                       <AlertTriangle className="ml-1 inline size-4 text-orange-500" />
                     )}
                   </TableCell>
-                  <TableCell>{produto.quantidadeMinima}</TableCell>
-                  <TableCell>{produto.quantidadeMaxima || '-'}</TableCell>
+                  <TableCell>{produto.minQty}</TableCell>
+                  <TableCell>{produto.maxQty || '-'}</TableCell>
                   <TableCell>{getStatusBadge(produto)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(produto)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(produto)}
+                      >
                         <Pencil className="size-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(produto.id)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(produto.id)}
+                      >
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
                     </div>
@@ -467,11 +462,14 @@ export function ProdutosPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>{editingProduto ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+            <DialogTitle>
+              {editingProduto ? 'Editar Produto' : 'Novo Produto'}
+            </DialogTitle>
             <DialogDescription>
               Preencha as informações do produto abaixo
             </DialogDescription>
           </DialogHeader>
+
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="nome">Nome do Produto *</Label>
@@ -479,7 +477,9 @@ export function ProdutosPage() {
                 id="nome"
                 maxLength={200}
                 value={formData.nome}
-                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                onChange={e =>
+                  setFormData({ ...formData, nome: e.target.value })
+                }
               />
             </div>
 
@@ -490,13 +490,20 @@ export function ProdutosPage() {
                   id="sku"
                   maxLength={50}
                   value={formData.sku}
-                  onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                  placeholder="Ex: LIV-001"
+                  onChange={e =>
+                    setFormData({ ...formData, sku: e.target.value })
+                  }
+                  placeholder="Ex: SKU-001"
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="tipoProduto">Tipo de Produto *</Label>
-                <Select value={formData.tipoProduto} onValueChange={(value) => setFormData({ ...formData, tipoProduto: value })}>
+                <Select
+                  value={formData.tipoProduto}
+                  onValueChange={(value: any) =>
+                    setFormData({ ...formData, tipoProduto: value })
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
@@ -509,7 +516,6 @@ export function ProdutosPage() {
               </div>
             </div>
 
-            {/* Seleção Múltipla de Autores */}
             <div className="grid gap-2">
               <Label>Autores * (selecione pelo menos um)</Label>
               {autores.length === 0 ? (
@@ -518,33 +524,37 @@ export function ProdutosPage() {
                 </p>
               ) : (
                 <div className="space-y-2 rounded-md border p-3">
-                  {autores.map(autor => (
-                    <div key={autor.id} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`autor-${autor.id}`}
-                        checked={formData.authorIds.includes(autor.id)}
-                        onCheckedChange={() => toggleAuthor(autor.id)}
-                      />
-                      <Label
-                        htmlFor={`autor-${autor.id}`}
-                        className="cursor-pointer"
-                      >
-                        {autor.nomeCompleto} - {autor.nacionalidade}
-                      </Label>
-                    </div>
-                  ))}
+                  {autores.map(autor => {
+                    const autorIdStr = String(autor.id);
+                    const checked = formData.authorIds.includes(autorIdStr);
+                    return (
+                      <div key={autor.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`autor-${autor.id}`}
+                          checked={checked}
+                          onCheckedChange={() => toggleAuthor(autorIdStr)}
+                        />
+                        <Label
+                          htmlFor={`autor-${autor.id}`}
+                          className="cursor-pointer"
+                        >
+                          {autor.fullName} - {autor.nationality}
+                        </Label>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {formData.authorIds.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {formData.authorIds.map(id => {
-                    const autor = autores.find(a => a.id === id);
+                  {formData.authorIds.map(idStr => {
+                    const autor = autores.find(a => a.id === Number(idStr));
                     return autor ? (
-                      <Badge key={id} variant="secondary" className="gap-1">
-                        {autor.nomeCompleto}
+                      <Badge key={idStr} variant="secondary" className="gap-1">
+                        {autor.fullName}
                         <button
                           type="button"
-                          onClick={() => toggleAuthor(id)}
+                          onClick={() => toggleAuthor(idStr)}
                           className="ml-1 hover:text-destructive"
                         >
                           <X className="size-3" />
@@ -563,7 +573,9 @@ export function ProdutosPage() {
                   id="editora"
                   maxLength={100}
                   value={formData.editora}
-                  onChange={(e) => setFormData({ ...formData, editora: e.target.value })}
+                  onChange={e =>
+                    setFormData({ ...formData, editora: e.target.value })
+                  }
                 />
               </div>
               <div className="grid gap-2">
@@ -572,24 +584,34 @@ export function ProdutosPage() {
                   id="isbn"
                   maxLength={20}
                   value={formData.isbn}
-                  onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
+                  onChange={e =>
+                    setFormData({ ...formData, isbn: e.target.value })
+                  }
                 />
               </div>
             </div>
 
             <div className="grid gap-2">
               <Label htmlFor="categoria">Categoria *</Label>
-              <Select value={formData.categoriaId} onValueChange={(value) => setFormData({ ...formData, categoriaId: value })}>
+              <Select
+                value={formData.categoriaId}
+                onValueChange={(value: any) =>
+                  setFormData({ ...formData, categoriaId: value })
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a categoria" />
                 </SelectTrigger>
                 <SelectContent>
                   {categorias.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>{cat.nome}</SelectItem>
+                    <SelectItem key={cat.id} value={String(cat.id)}>
+                      {cat.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="preco">Preço Unitário *</Label>
@@ -599,12 +621,20 @@ export function ProdutosPage() {
                   step="0.01"
                   min="0"
                   value={formData.precoUnitario}
-                  onChange={(e) => setFormData({ ...formData, precoUnitario: e.target.value })}
-                  onBlur={(e) => {
+                  onChange={e =>
+                    setFormData({
+                      ...formData,
+                      precoUnitario: e.target.value,
+                    })
+                  }
+                  onBlur={e => {
                     const num = parseFloat(e.target.value) || 0;
                     if (num < 0) {
                       toast.error('Preço não pode ser menor que zero');
-                      setFormData({ ...formData, precoUnitario: '0' });
+                      setFormData({
+                        ...formData,
+                        precoUnitario: '0',
+                      });
                     }
                   }}
                 />
@@ -615,10 +645,16 @@ export function ProdutosPage() {
                   id="unidade"
                   maxLength={20}
                   value={formData.unidadeMedida}
-                  onChange={(e) => setFormData({ ...formData, unidadeMedida: e.target.value })}
+                  onChange={e =>
+                    setFormData({
+                      ...formData,
+                      unidadeMedida: e.target.value,
+                    })
+                  }
                 />
               </div>
             </div>
+
             <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="estoque">Qtd. Estoque *</Label>
@@ -628,17 +664,28 @@ export function ProdutosPage() {
                   min="0"
                   max="99999"
                   value={formData.quantidadeEstoque}
-                  onChange={(e) => {
+                  onChange={e => {
                     const value = e.target.value;
-                    if (value === '' || (/^\d+$/.test(value) && value.length <= 5)) {
-                      setFormData({ ...formData, quantidadeEstoque: value });
+                    if (
+                      value === '' ||
+                      (/^\d+$/.test(value) && value.length <= 5)
+                    ) {
+                      setFormData({
+                        ...formData,
+                        quantidadeEstoque: value,
+                      });
                     }
                   }}
-                  onBlur={(e) => {
+                  onBlur={e => {
                     const num = parseInt(e.target.value) || 0;
                     if (num < 0) {
-                      toast.error('Quantidade em estoque não pode ser menor que zero');
-                      setFormData({ ...formData, quantidadeEstoque: '0' });
+                      toast.error(
+                        'Quantidade em estoque não pode ser menor que zero',
+                      );
+                      setFormData({
+                        ...formData,
+                        quantidadeEstoque: '0',
+                      });
                     }
                   }}
                 />
@@ -651,17 +698,28 @@ export function ProdutosPage() {
                   min="0"
                   max="99999"
                   value={formData.quantidadeMinima}
-                  onChange={(e) => {
+                  onChange={e => {
                     const value = e.target.value;
-                    if (value === '' || (/^\d+$/.test(value) && value.length <= 5)) {
-                      setFormData({ ...formData, quantidadeMinima: value });
+                    if (
+                      value === '' ||
+                      (/^\d+$/.test(value) && value.length <= 5)
+                    ) {
+                      setFormData({
+                        ...formData,
+                        quantidadeMinima: value,
+                      });
                     }
                   }}
-                  onBlur={(e) => {
+                  onBlur={e => {
                     const num = parseInt(e.target.value) || 0;
                     if (num < 0) {
-                      toast.error('Quantidade mínima não pode ser menor que zero');
-                      setFormData({ ...formData, quantidadeMinima: '0' });
+                      toast.error(
+                        'Quantidade mínima não pode ser menor que zero',
+                      );
+                      setFormData({
+                        ...formData,
+                        quantidadeMinima: '0',
+                      });
                     }
                   }}
                 />
@@ -674,45 +732,61 @@ export function ProdutosPage() {
                   min="0"
                   max="99999"
                   value={formData.quantidadeMaxima}
-                  onChange={(e) => {
+                  onChange={e => {
                     const value = e.target.value;
-                    if (value === '' || (/^\d+$/.test(value) && value.length <= 5)) {
-                      setFormData({ ...formData, quantidadeMaxima: value });
+                    if (
+                      value === '' ||
+                      (/^\d+$/.test(value) && value.length <= 5)
+                    ) {
+                      setFormData({
+                        ...formData,
+                        quantidadeMaxima: value,
+                      });
                     }
                   }}
-                  onBlur={(e) => {
+                  onBlur={e => {
                     const num = parseInt(e.target.value) || 0;
                     if (num < 0) {
-                      toast.error('Quantidade máxima não pode ser menor que zero');
-                      setFormData({ ...formData, quantidadeMaxima: '0' });
+                      toast.error(
+                        'Quantidade máxima não pode ser menor que zero',
+                      );
+                      setFormData({
+                        ...formData,
+                        quantidadeMaxima: '0',
+                      });
                     }
                   }}
                 />
               </div>
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
-              Salvar
-            </Button>
+            <Button onClick={handleSave}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir este produto? Esta ação não pode
+              ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDelete}>
+              Excluir
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

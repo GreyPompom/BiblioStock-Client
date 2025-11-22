@@ -497,6 +497,7 @@ export function RelatoriosPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Produto</TableHead>
+                      <TableHead>Nome do Produto</TableHead>
                       <TableHead>Total de Entradas</TableHead>
                       <TableHead>Total de Saídas</TableHead>
                       <TableHead>Saldo</TableHead>
@@ -506,6 +507,7 @@ export function RelatoriosPage() {
                     {movimentoPorProduto.map((item, index) => (
                       <TableRow key={index}>
                         <TableCell>{item.productId}</TableCell>
+                        <TableCell>{item.productName}</TableCell>
                         <TableCell className="text-green-600">+{item.entries}</TableCell>
                         <TableCell className="text-red-600">-{item.exits}</TableCell>
                         <TableCell>{item.entries - item.exits}</TableCell>
